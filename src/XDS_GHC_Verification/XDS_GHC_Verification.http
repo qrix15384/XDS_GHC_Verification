@@ -1,0 +1,6 @@
+@XDS_GHC_Verification_HostAddress = http://localhost:5068
+
+GET {{XDS_GHC_Verification_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

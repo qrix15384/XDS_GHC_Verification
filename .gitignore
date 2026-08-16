@@ -1,0 +1,22 @@
+# Build results
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# Rider/VS
+.vs/
+.idea/
+
+# Local secrets — never commit (use `dotnet user-secrets` for local dev)
+appsettings.Production.json
+appsettings.*.local.json
+
+# Logs
+logs/
+*.log
+
+# IIS publish output
+publish/

@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/XDS_GHC_Verification/XDS_GHC_Verification.csproj" />
+  </Folder>
+</Solution>
