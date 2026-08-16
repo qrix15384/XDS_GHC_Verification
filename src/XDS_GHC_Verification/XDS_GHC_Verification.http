@@ -1,6 +1,60 @@
-@XDS_GHC_Verification_HostAddress = http://localhost:5068
+@host = http://localhost:5068
+@apiKey = local-dev-test-key-12345
+@token = paste-the-token-field-from-the-login-response-here
 
-GET {{XDS_GHC_Verification_HostAddress}}/weatherforecast/
-Accept: application/json
+### Health check (no auth)
+GET {{host}}/health
 
-###
+### Login — validates against ProxyUsers, returns the shared X-API-Key + a personal JWT
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "Admin",
+  "password": "AdminChrisAfflu"
+}
+
+### List proxy users (Admin role only — needs the JWT from login, not X-API-Key)
+GET {{host}}/api/v1/users
+Authorization: Bearer {{token}}
+
+### Create a proxy user (Admin role only)
+POST {{host}}/api/v1/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "username": "new-user",
+  "password": "a-strong-password-123",
+  "role": "Standard"
+}
+
+### View the audit log (any authenticated role — PIN/payload redacted for Standard)
+GET {{host}}/api/v1/transactions?page=1&pageSize=25
+Authorization: Bearer {{token}}
+
+### KYC face verification — forwards to the real NIA upstream API
+# Replace pinNumber with a real/sandbox Ghana Card PIN and image with a
+# real Base64 PNG (640x480 min, under 1MB) before sending.
+POST {{host}}/api/v1/selfie/verification/kyc/face
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "pinNumber": "GHA-123456789-0",
+  "image": "<base64-png>"
+}
+
+### YES/NO face verification — forwards to the real NIA upstream API
+POST {{host}}/api/v1/selfie/verification/yes_no/face
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "pinNumber": "GHA-123456789-0",
+  "image": "<base64-png>"
+}
+
+### Generic proxy passthrough example
+GET {{host}}/api/v1/proxy/some-upstream-path
+X-API-Key: {{apiKey}}

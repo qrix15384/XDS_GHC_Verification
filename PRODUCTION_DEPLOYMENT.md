@@ -30,7 +30,7 @@ This is *substantially* simpler than a comparable Python/IIS deployment — IIS 
 - [ ] Windows Server 2008 R2 running SQL Server 2012 for the database — **this OS is out of Microsoft's product support** (extended support ended January 2020, no security patches without a paid ESU contract) and **does not support TLS 1.2 out of the box**. Both are addressed below (§2.6), but flag this to whoever owns infrastructure risk.
 - [ ] A real TLS certificate for the app's public hostname.
 - [ ] Network path from the app server to the DB server on port 1433, and from the app server out to the internet (upstream API) on port 443/2035.
-- [ ] The production values for every secret currently in local `user-secrets`: `ServiceAuth:ApiKey`/`AuthUsername`/`AuthPassword`, `Selfie:MerchantKey`/`UserId`, and the DB connection string.
+- [ ] The production values for every secret currently in local `user-secrets`: `ServiceAuth:ApiKey`/`AuthUsername`/`AuthPassword`, `Selfie:MerchantKey`/`UserId`, `Jwt:SigningKey` (a fresh, random ≥32-character string — do **not** reuse the dev value), and the DB connection string.
 
 ---
 
@@ -42,11 +42,14 @@ Edit `sql/001_create_xds_ghc_verification_database.sql` first and replace `<CHAN
 
 ```cmd
 sqlcmd -S <db-server> -E -i sql\001_create_xds_ghc_verification_database.sql
+sqlcmd -S <db-server> -d XdsGhcVerification -E -i sql\002_add_proxy_users_table.sql
 ```
 
-This creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and the least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only — no `db_owner`, no `sysadmin`).
+`001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and the least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only — no `db_owner`, no `sysadmin`). `002` is additive and safe to re-run — it adds the `ProxyUsers` table (individual login accounts, replacing the old single shared username/password check) and grants `xds_ghc_svc` full CRUD on just that one table.
 
-> **This script drops and recreates `ApiTransactionLog`.** Run it once, on initial provisioning. If the table already holds production data, do **not** re-run this file — write a new, additive `002_*.sql` script instead.
+> **`001` drops and recreates `ApiTransactionLog`.** Run it once, on initial provisioning. If the table already holds production data, do **not** re-run this file — write a new, additive `00N_*.sql` script instead, following `002`'s pattern.
+
+On first run against a freshly-migrated database, the app seeds one `Admin` account into `ProxyUsers` using the `ServiceAuth:AuthUsername`/`AuthPassword` secrets below — that's your first login on a new environment. Create real named accounts (and disable/delete the seed one if desired) via the admin console once you're in.
 
 ### 2.2 Enable Mixed Mode authentication
 
@@ -139,6 +142,10 @@ Since the ASP.NET Core Module runs the app **as the app pool identity** (unlike 
 
 > **If you bind without a hostname** (raw `*:80`/`*:443`), it can collide with "Default Web Site". Bind to your real production hostname to avoid this — the normal case for a public-facing site.
 
+### 3.5 The admin console frontend (`frontend/`)
+
+This is a separate static app (Vite build output — plain HTML/JS/CSS) from the API above; it isn't published by `dotnet publish` and isn't covered by the IIS steps above. `npm run build` in `frontend/` produces a `dist/` folder that can be served by any static host (a second IIS site with the static-content handler, a separate origin behind your reverse proxy, cloud static hosting, etc.) — pick one when you're ready to deploy it and point `VITE_API_BASE_URL` (baked in at build time) at the real API origin. Camera capture (`getUserMedia`, used by the Test API tab) requires the console itself be served over HTTPS once it's not on `localhost`. Not designed further here — flagging so it isn't missed at deploy time.
+
 ---
 
 ## 4. TLS end to end
@@ -228,5 +235,5 @@ curl -i https://your-domain.example.com/api/v1/proxy/ping \
 
 - **Logs**: `stdoutLogEnabled` in the generated `web.config` is `false` by default for in-process hosting (ANCM captures startup-critical failures separately) — enable it (`stdoutLogEnabled="true"`, `stdoutLogFile=".\logs\stdout.log"`, create the `logs` folder) if you need routine app logs captured to disk; otherwise rely on `ILogger` sinks (e.g. a file provider or centralized logging) configured in `Program.cs`.
 - **Monitoring**: point your uptime tool at `/health`. No auth required by design.
-- **Secret rotation**: rotate `ServiceAuth:ApiKey`/`AuthPassword` in the production secrets file/environment variables, then recycle the app pool — any client using the old key gets `403` until they log in again for a new one.
+- **Secret rotation**: rotate `ServiceAuth:ApiKey` in the production secrets file/environment variables, then recycle the app pool — any client using the old key gets `403` until they log in again for a new one. Rotating `Jwt:SigningKey` invalidates every currently-issued admin-console JWT immediately (everyone has to log in again) but does **not** affect `X-API-Key` clients at all — the two secrets are independent by design.
 - **Capacity**: in-process hosting runs one worker process per app pool. Scale via IIS's own worker-process/app-pool settings, or by adding more app server instances behind a load balancer.

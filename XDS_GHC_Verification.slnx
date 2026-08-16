@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/XDS_GHC_Verification/XDS_GHC_Verification.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/XDS_GHC_Verification.Tests/XDS_GHC_Verification.Tests.csproj" />
+  </Folder>
 </Solution>

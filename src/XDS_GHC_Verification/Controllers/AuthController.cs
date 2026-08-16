@@ -1,31 +1,36 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using XDS_GHC_Verification.Models;
 using XDS_GHC_Verification.Options;
 using XDS_GHC_Verification.Services;
-using XDS_GHC_Verification.Utils;
 
 namespace XDS_GHC_Verification.Controllers;
 
 /// <summary>
-/// Username/password login that issues the service X-API-Key. Clients
-/// exchange their username/password for the shared SERVICE_API_KEY-equivalent
-/// via POST /api/v1/auth/login, then use that key as X-API-Key on every
-/// other endpoint.
+/// Username/password login. Validates against the ProxyUsers table (a real,
+/// individually managed account per person) and, on success, issues both the
+/// one shared X-API-Key (unchanged behavior for external API clients) and a
+/// personal JWT (for the admin web app's user-management/transaction views).
 /// </summary>
 [ApiController]
 [Route("api/v1/auth")]
-public class AuthController(IOptions<ServiceAuthOptions> authOptions, IAuditLogService auditLog) : ControllerBase
+public class AuthController(
+    IProxyUserService users,
+    IPasswordHasher<ProxyUser> passwordHasher,
+    JwtTokenService jwtTokenService,
+    IOptions<ServiceAuthOptions> authOptions,
+    IAuditLogService auditLog) : ControllerBase
 {
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest payload, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
-        var opts = authOptions.Value;
 
-        var isValid = SecureCompare.Equals(payload.Username, opts.AuthUsername)
-            & SecureCompare.Equals(payload.Password, opts.AuthPassword);
+        var user = await users.FindByUsernameAsync(payload.Username, ct);
+        var isValid = user is { IsActive: true }
+            && passwordHasher.VerifyHashedPassword(user, user.PasswordHash, payload.Password) != PasswordVerificationResult.Failed;
 
         var statusCode = isValid ? StatusCodes.Status200OK : StatusCodes.Status401Unauthorized;
 
@@ -48,6 +53,15 @@ public class AuthController(IOptions<ServiceAuthOptions> authOptions, IAuditLogS
             return StatusCode(StatusCodes.Status401Unauthorized, new { detail = "Invalid username or password." });
         }
 
-        return Ok(new LoginResponse { ApiKey = opts.ApiKey, TokenType = "apikey" });
+        var issued = jwtTokenService.GenerateToken(user!);
+
+        return Ok(new LoginResponse
+        {
+            ApiKey = authOptions.Value.ApiKey,
+            TokenType = "apikey",
+            Token = issued.Token,
+            Role = user!.Role,
+            ExpiresAtUtc = issued.ExpiresAtUtc,
+        });
     }
 }

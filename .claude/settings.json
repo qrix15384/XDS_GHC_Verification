@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(curl -s -i -X OPTIONS http://localhost:5068/api/v1/auth/login -H 'Origin: http://localhost:5174' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type')",
+      "Bash(curl -s -i -X POST http://localhost:5068/api/v1/auth/login -H 'Origin: http://localhost:5174' -H 'Content-Type: application/json' -d '{\"username\":\"local-dev-tester\",\"password\":\"local-dev-test-pass-12345\"}')",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(sqlcmd -S localhost -d XdsGhcVerification -E -Q \"SELECT Id, Username, Role, IsActive, LEN\\(PasswordHash\\) AS HashLen FROM dbo.ProxyUsers;\")"
+    ]
+  }
+}

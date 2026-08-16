@@ -60,7 +60,7 @@ public class SelfieController(
             {
                 EndpointPath = endpoint,
                 HttpMethod = "POST",
-                Username = authOptions.Value.AuthUsername,
+                Username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername),
                 HttpStatusCode = statusCode,
                 ResponsePayload = body,
                 DetailsFound = detailsFoundFn(body),
@@ -76,7 +76,7 @@ public class SelfieController(
             {
                 EndpointPath = endpoint,
                 HttpMethod = "POST",
-                Username = authOptions.Value.AuthUsername,
+                Username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername),
                 HttpStatusCode = ex.StatusCode,
                 ResponsePayload = ex.Detail as JsonNode,
                 RawResponsePayload = ex.Detail is JsonNode ? null : ex.Detail?.ToString(),
