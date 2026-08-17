@@ -91,25 +91,9 @@ export const api = {
       body: JSON.stringify({ role, isActive, subscriberId }),
     }),
 
+  // Read-only — subscribers are managed entirely outside this app.
   listSubscribers: (auth: AuthContextValue) =>
     request<Subscriber[]>("/api/v1/subscribers", { auth }),
-
-  createSubscriber: (auth: AuthContextValue, name: string) =>
-    request<Subscriber>("/api/v1/subscribers", {
-      method: "POST",
-      auth,
-      body: JSON.stringify({ name }),
-    }),
-
-  updateSubscriber: (auth: AuthContextValue, id: number, name: string, isActive: boolean) =>
-    request<void>(`/api/v1/subscribers/${id}`, {
-      method: "PUT",
-      auth,
-      body: JSON.stringify({ name, isActive }),
-    }),
-
-  deleteSubscriber: (auth: AuthContextValue, id: number) =>
-    request<void>(`/api/v1/subscribers/${id}`, { method: "DELETE", auth }),
 
   resetPassword: (auth: AuthContextValue, id: number, newPassword: string) =>
     request<void>(`/api/v1/users/${id}/reset-password`, {

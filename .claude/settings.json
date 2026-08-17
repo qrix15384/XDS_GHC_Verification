@@ -8,7 +8,16 @@
       "Bash(curl -s -i -X POST http://localhost:5068/api/v1/auth/login -H 'Origin: http://localhost:5174' -H 'Content-Type: application/json' -d '{\"username\":\"local-dev-tester\",\"password\":\"local-dev-test-pass-12345\"}')",
       "Bash(dotnet build *)",
       "Bash(dotnet test *)",
-      "Bash(sqlcmd -S localhost -d XdsGhcVerification -E -Q \"SELECT Id, Username, Role, IsActive, LEN\\(PasswordHash\\) AS HashLen FROM dbo.ProxyUsers;\")"
+      "Bash(sqlcmd -S localhost -d XdsGhcVerification -E -Q \"SELECT Id, Username, Role, IsActive, LEN\\(PasswordHash\\) AS HashLen FROM dbo.ProxyUsers;\")",
+      "Bash(sqlcmd -S localhost -d XdsGhanaAdmin -E -Q \"CREATE USER xds_ghc_svc FOR LOGIN xds_ghc_svc; GRANT SELECT ON dbo.Subscriber TO xds_ghc_svc;\")",
+      "Bash(sqlcmd -S localhost -d XdsGhanaAdmin -E -Q \"SELECT dp.permission_name, dp.state_desc, OBJECT_NAME\\(dp.major_id\\) AS obj FROM sys.database_permissions dp JOIN sys.database_principals p ON dp.grantee_principal_id = p.principal_id WHERE p.name = 'xds_ghc_svc';\")",
+      "Bash(sqlcmd -S localhost -d XdsGhanaAdmin -U xds_ghc_svc -P '?m1.ZYrE\\)$M8=uE8@waijmpb' -Q 'SET NOCOUNT ON; SELECT COUNT\\(*\\) AS active_subscribers FROM dbo.Subscriber WHERE StatusInd = '\\\\''A'\\\\'';')",
+      "Bash(npm run *)",
+      "Bash(sqlcmd -S localhost -d XdsGhcVerification -E -i sql/004_link_subscribers_to_ghana_admin.sql)",
+      "Bash(sqlcmd -S localhost -d XdsGhcVerification -E -Q \"SELECT COUNT\\(*\\) AS still_exists FROM sys.tables WHERE name = 'Subscribers';\")",
+      "Bash(sqlcmd -S localhost -d XdsGhcVerification -E -Q \"SELECT COUNT\\(*\\) AS fk_still_exists FROM sys.foreign_keys WHERE name = 'FK_ProxyUsers_Subscribers';\")",
+      "Bash(sqlcmd -S localhost -d XdsGhanaAdmin -E -Q \"SET NOCOUNT ON; SELECT COUNT\\(*\\) AS total_rows FROM dbo.Subscriber; SELECT SubscriberID, SubscriberName FROM dbo.Subscriber WHERE SubscriberID = 1;\")",
+      "Bash(curl -s -o /dev/null -w \"frontend status: %{http_code}\\\\n\" http://localhost:5174/)"
     ]
   }
 }

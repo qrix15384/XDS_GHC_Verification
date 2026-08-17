@@ -31,6 +31,7 @@ This is *substantially* simpler than a comparable Python/IIS deployment — IIS 
 - [ ] A real TLS certificate for the app's public hostname.
 - [ ] Network path from the app server to the DB server on port 1433, and from the app server out to the internet (upstream API) on port 443/2035.
 - [ ] The production values for every secret currently in local `user-secrets`: `ServiceAuth:ApiKey`/`AuthUsername`/`AuthPassword`, `Selfie:MerchantKey`/`UserId`, `Jwt:SigningKey` (a fresh, random ≥32-character string — do **not** reuse the dev value), and the DB connection string.
+- [ ] `XdsGhanaAdmin` reachable on the **same SQL Server instance** as `XdsGhcVerification` in this environment, with `xds_ghc_svc` granted `SELECT` on `dbo.Subscriber` there (see §2.1) — the Subscribers feature reads that table live and will fail without it.
 
 ---
 
@@ -44,9 +45,18 @@ Edit `sql/001_create_xds_ghc_verification_database.sql` first and replace `<CHAN
 sqlcmd -S <db-server> -E -i sql\001_create_xds_ghc_verification_database.sql
 sqlcmd -S <db-server> -d XdsGhcVerification -E -i sql\002_add_proxy_users_table.sql
 sqlcmd -S <db-server> -d XdsGhcVerification -E -i sql\003_add_subscribers_table.sql
+sqlcmd -S <db-server> -d XdsGhcVerification -E -i sql\004_link_subscribers_to_ghana_admin.sql
 ```
 
-`001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and the least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only — no `db_owner`, no `sysadmin`). `002` and `003` are additive and safe to re-run — `002` adds the `ProxyUsers` table (individual login accounts, replacing the old single shared username/password check), `003` adds the `Subscribers` table (client organizations a `ProxyUsers` account can belong to) plus the `SubscriberId`/`SubscriberName` columns on `ApiTransactionLog` — each grants `xds_ghc_svc` full CRUD on just its own new table.
+Run all four, in order, even on a brand-new environment — each is additive/idempotent. `001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and the least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only — no `db_owner`, no `sysadmin`). `002` adds the `ProxyUsers` table (individual login accounts, replacing the old single shared username/password check). `003` adds the `SubscriberId`/`SubscriberName` columns this app reads/writes on `ProxyUsers` and `ApiTransactionLog`, plus a local `Subscribers` table that `004` immediately supersedes: subscribers are instead read live (read-only, never written) from an existing `XdsGhanaAdmin.dbo.Subscriber` table on the **same SQL Server instance** — `004` drops the now-unused local table and its FK. This requires a one-time grant on `XdsGhanaAdmin`, run separately (**not** part of any script in this repo):
+
+```sql
+USE XdsGhanaAdmin;
+CREATE USER xds_ghc_svc FOR LOGIN xds_ghc_svc;
+GRANT SELECT ON dbo.Subscriber TO xds_ghc_svc;
+```
+
+If `XdsGhanaAdmin` is on a different SQL Server instance than `XdsGhcVerification` in your environment, the cross-database query in `SubscriberService` won't resolve as-is — that would need a linked server or a different approach, not built here.
 
 > **`001` drops and recreates `ApiTransactionLog`.** Run it once, on initial provisioning. If the table already holds production data, do **not** re-run this file — write a new, additive `00N_*.sql` script instead, following `002`'s pattern.
 

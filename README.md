@@ -36,9 +36,18 @@ A production-ready **ASP.NET Core (.NET 10) Web API** that acts as a secure, aut
 sqlcmd -S <server> -E -i sql\001_create_xds_ghc_verification_database.sql
 sqlcmd -S <server> -d XdsGhcVerification -E -i sql\002_add_proxy_users_table.sql
 sqlcmd -S <server> -d XdsGhcVerification -E -i sql\003_add_subscribers_table.sql
+sqlcmd -S <server> -d XdsGhcVerification -E -i sql\004_link_subscribers_to_ghana_admin.sql
 ```
 
-Edit `001` first and replace `<CHANGE_ME_STRONG_PASSWORD>` with a freshly generated password — never commit a real one. `001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and a least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only). `002` and `003` are additive — safe to re-run — and add the `ProxyUsers` table (individual login accounts) and the `Subscribers` table (client organizations, e.g. a bank or telco, that a `ProxyUsers` account can belong to) respectively, granting `xds_ghc_svc` full CRUD on just those tables.
+Run all four, in order, on every environment (including a brand-new one) — each is additive/idempotent. `001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and a least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only). `002` adds the `ProxyUsers` table. `003` adds the `SubscriberId`/`SubscriberName` columns this app actually reads/writes on `ProxyUsers` and `ApiTransactionLog`, plus a now-superseded local `Subscribers` table. `004` corrects that last part: it drops that local table and its FK, because subscribers are instead read live (read-only) from an existing `XdsGhanaAdmin.dbo.Subscriber` table on the **same SQL Server instance** — this app never creates, edits, or deletes rows there. That requires a one-time grant on `XdsGhanaAdmin`, run separately (**not** part of any script in this repo — that database is out of scope for this project's migrations):
+
+```sql
+USE XdsGhanaAdmin;
+CREATE USER xds_ghc_svc FOR LOGIN xds_ghc_svc;
+GRANT SELECT ON dbo.Subscriber TO xds_ghc_svc;
+```
+
+If `XdsGhanaAdmin` lives on a different SQL Server instance than `XdsGhcVerification` in your environment, the cross-database query in `SubscriberService` won't resolve — you'd need a linked server or a different approach; this hasn't been built.
 
 ### 3. Configure local secrets
 
@@ -156,7 +165,7 @@ curl -X POST http://localhost:5000/api/v1/proxy/orders \
 A separate frontend app (`frontend/`, Vite + React + TypeScript) for managing accounts, browsing the audit log, and testing the live API without curl. It's a plain client of this API — see step 5 above to run it. It authenticates against the same `/api/v1/auth/login` endpoint, then uses the returned `token` (JWT) as `Authorization: Bearer <token>` for its own endpoints, and the returned `apiKey` as `X-API-Key` when it calls the selfie/proxy endpoints on your behalf.
 
 - **Users tab** (Admin role only) — create, edit (role/active/subscriber), reset password, and delete `ProxyUsers` accounts via `/api/v1/users`. An Admin cannot demote, deactivate, or delete their own account, and the last active Admin can't be removed — both guarded server-side.
-- **Subscribers tab** (Admin role only) — manage client organizations (e.g. a bank or telco) via `/api/v1/subscribers`. Assign a `ProxyUsers` account to one from the Users tab; a subscriber with accounts still assigned can't be deleted until they're reassigned or removed.
+- **Subscribers tab** (Admin role only) — **read-only** list of client organizations via `/api/v1/subscribers`, sourced live from the real `XdsGhanaAdmin.dbo.Subscriber` table. This app never creates, edits, or deletes rows there; assign a `ProxyUsers` account to one of these from the Users tab.
 - **Transactions tab** — browse `ApiTransactionLog` via `/api/v1/transactions` (paginated, filterable by username, subscriber, and a from/to date range). Admins see the full row including the Ghana Card PIN and NIA response payload; Standard-role accounts see a redacted summary with the PIN and payload withheld. "Export Excel"/"Export PDF" download every row matching the current filters (not just the visible page), capped at 5000 rows.
 - **Test API tab** — exercises the real endpoints above as an authenticated caller. The Selfie Verification panel captures a photo **live from the browser camera only** (no file-upload option) at 640×480, checks it's under the vendor's 1MB cap client-side before sending, and posts it to the real KYC/YES-NO endpoints with a PIN you type in. A Generic Proxy panel does the same for the catch-all proxy (method/path/JSON body).
 
@@ -217,7 +226,9 @@ XDS_GHC_Verification/
 │   └── XDS_GHC_Verification.Tests/    # xUnit — unit + WebApplicationFactory integration tests
 ├── sql/
 │   ├── 001_create_xds_ghc_verification_database.sql
-│   └── 002_add_proxy_users_table.sql
+│   ├── 002_add_proxy_users_table.sql
+│   ├── 003_add_subscribers_table.sql
+│   └── 004_link_subscribers_to_ghana_admin.sql
 ├── .gitignore
 ├── README.md
 └── PRODUCTION_DEPLOYMENT.md

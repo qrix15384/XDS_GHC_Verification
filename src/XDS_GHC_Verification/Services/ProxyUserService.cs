@@ -15,7 +15,6 @@ public interface IProxyUserService
     Task DeleteAsync(int id, CancellationToken ct = default);
     Task<int> CountAsync(CancellationToken ct = default);
     Task<int> CountActiveAdminsAsync(CancellationToken ct = default);
-    Task<int> CountBySubscriberIdAsync(int subscriberId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -27,10 +26,15 @@ public interface IProxyUserService
 /// </summary>
 public class ProxyUserService : IProxyUserService
 {
+    // Cross-database join against the real, authoritative subscriber list
+    // (XdsGhanaAdmin.dbo.Subscriber, same SQL Server instance, read-only —
+    // see SubscriberService) rather than any table owned by this database.
     private const string SelectColumns = """
         u.Id, u.Username, u.PasswordHash, u.Role, u.IsActive, u.CreatedAtUtc, u.SubscriberId,
-        s.Name AS SubscriberName
+        s.SubscriberName AS SubscriberName
         """;
+
+    private const string SubscriberJoin = "LEFT JOIN XdsGhanaAdmin.dbo.Subscriber s ON s.SubscriberID = u.SubscriberId";
 
     private readonly string _connectionString;
 
@@ -46,7 +50,7 @@ public class ProxyUserService : IProxyUserService
         return await connection.QuerySingleOrDefaultAsync<ProxyUser>(new CommandDefinition(
             $"""
             SELECT {SelectColumns}
-            FROM dbo.ProxyUsers u LEFT JOIN dbo.Subscribers s ON s.Id = u.SubscriberId
+            FROM dbo.ProxyUsers u {SubscriberJoin}
             WHERE u.Username = @username
             """,
             new { username }, cancellationToken: ct));
@@ -58,7 +62,7 @@ public class ProxyUserService : IProxyUserService
         return await connection.QuerySingleOrDefaultAsync<ProxyUser>(new CommandDefinition(
             $"""
             SELECT {SelectColumns}
-            FROM dbo.ProxyUsers u LEFT JOIN dbo.Subscribers s ON s.Id = u.SubscriberId
+            FROM dbo.ProxyUsers u {SubscriberJoin}
             WHERE u.Id = @id
             """,
             new { id }, cancellationToken: ct));
@@ -70,7 +74,7 @@ public class ProxyUserService : IProxyUserService
         var users = await connection.QueryAsync<ProxyUser>(new CommandDefinition(
             $"""
             SELECT {SelectColumns}
-            FROM dbo.ProxyUsers u LEFT JOIN dbo.Subscribers s ON s.Id = u.SubscriberId
+            FROM dbo.ProxyUsers u {SubscriberJoin}
             ORDER BY u.Username
             """,
             cancellationToken: ct));
@@ -128,13 +132,5 @@ public class ProxyUserService : IProxyUserService
         await using var connection = new SqlConnection(_connectionString);
         return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
             "SELECT COUNT(*) FROM dbo.ProxyUsers WHERE Role = 'Admin' AND IsActive = 1", cancellationToken: ct));
-    }
-
-    public async Task<int> CountBySubscriberIdAsync(int subscriberId, CancellationToken ct = default)
-    {
-        await using var connection = new SqlConnection(_connectionString);
-        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT COUNT(*) FROM dbo.ProxyUsers WHERE SubscriberId = @subscriberId",
-            new { subscriberId }, cancellationToken: ct));
     }
 }

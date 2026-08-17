@@ -16,29 +16,16 @@ public class SubscribersControllerTests(CustomWebApplicationFactory factory) : I
     }
 
     [Fact]
-    public async Task Create_ThenList_ReturnsTheNewSubscriber()
+    public async Task List_AsAdmin_ReturnsSeededSubscribers()
     {
+        var seeded = factory.Subscribers.Seed($"Acme Bank {Guid.NewGuid():N}");
         var admin = await AdminClientAsync();
-        var name = $"Acme Bank {Guid.NewGuid():N}";
 
-        var createResponse = await admin.PostAsJsonAsync("/api/v1/subscribers", new { name });
-        Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
+        var response = await admin.GetAsync("/api/v1/subscribers");
 
-        var listResponse = await admin.GetAsync("/api/v1/subscribers");
-        var body = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync());
-        Assert.Contains(body.RootElement.EnumerateArray(), s => s.GetProperty("name").GetString() == name);
-    }
-
-    [Fact]
-    public async Task Create_DuplicateName_ReturnsConflict()
-    {
-        var admin = await AdminClientAsync();
-        var name = $"Dup Subscriber {Guid.NewGuid():N}";
-        await admin.PostAsJsonAsync("/api/v1/subscribers", new { name });
-
-        var response = await admin.PostAsJsonAsync("/api/v1/subscribers", new { name });
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Contains(body.RootElement.EnumerateArray(), s => s.GetProperty("name").GetString() == seeded.Name);
     }
 
     [Fact]
@@ -65,38 +52,26 @@ public class SubscribersControllerTests(CustomWebApplicationFactory factory) : I
     }
 
     [Fact]
-    public async Task Delete_SubscriberWithAssignedUsers_ReturnsBadRequest()
+    public async Task GetById_KnownSubscriber_ReturnsIt()
     {
+        var seeded = factory.Subscribers.Seed($"Known Sub {Guid.NewGuid():N}");
         var admin = await AdminClientAsync();
-        var subscriberName = $"Has Users {Guid.NewGuid():N}";
-        var createResponse = await admin.PostAsJsonAsync("/api/v1/subscribers", new { name = subscriberName });
-        var subscriber = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
-        var subscriberId = subscriber.RootElement.GetProperty("id").GetInt32();
 
-        await admin.PostAsJsonAsync("/api/v1/users", new
-        {
-            username = $"assigned-user-{Guid.NewGuid():N}",
-            password = "password-123",
-            role = "Standard",
-            subscriberId,
-        });
+        var response = await admin.GetAsync($"/api/v1/subscribers/{seeded.Id}");
 
-        var response = await admin.DeleteAsync($"/api/v1/subscribers/{subscriberId}");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(seeded.Name, body.RootElement.GetProperty("name").GetString());
     }
 
     [Fact]
-    public async Task Delete_SubscriberWithNoUsers_Succeeds()
+    public async Task GetById_UnknownSubscriber_ReturnsNotFound()
     {
         var admin = await AdminClientAsync();
-        var createResponse = await admin.PostAsJsonAsync("/api/v1/subscribers", new { name = $"No Users {Guid.NewGuid():N}" });
-        var subscriber = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
-        var subscriberId = subscriber.RootElement.GetProperty("id").GetInt32();
 
-        var response = await admin.DeleteAsync($"/api/v1/subscribers/{subscriberId}");
+        var response = await admin.GetAsync("/api/v1/subscribers/999999");
 
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -118,23 +93,20 @@ public class SubscribersControllerTests(CustomWebApplicationFactory factory) : I
     [Fact]
     public async Task CreateUser_WithValidSubscriberId_ReturnsUserWithSubscriberName()
     {
+        var seeded = factory.Subscribers.Seed($"Valid Sub {Guid.NewGuid():N}");
         var admin = await AdminClientAsync();
-        var subscriberName = $"Valid Sub {Guid.NewGuid():N}";
-        var createSubResponse = await admin.PostAsJsonAsync("/api/v1/subscribers", new { name = subscriberName });
-        var subscriber = JsonDocument.Parse(await createSubResponse.Content.ReadAsStringAsync());
-        var subscriberId = subscriber.RootElement.GetProperty("id").GetInt32();
 
         var response = await admin.PostAsJsonAsync("/api/v1/users", new
         {
             username = $"with-subscriber-{Guid.NewGuid():N}",
             password = "password-123",
             role = "Standard",
-            subscriberId,
+            subscriberId = seeded.Id,
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(subscriberId, body.RootElement.GetProperty("subscriberId").GetInt32());
-        Assert.Equal(subscriberName, body.RootElement.GetProperty("subscriberName").GetString());
+        Assert.Equal(seeded.Id, body.RootElement.GetProperty("subscriberId").GetInt32());
+        Assert.Equal(seeded.Name, body.RootElement.GetProperty("subscriberName").GetString());
     }
 }

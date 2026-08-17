@@ -42,9 +42,7 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
         var adminLogin = await TestAuthHelper.LoginAsync(admin, CustomWebApplicationFactory.AuthUsername, CustomWebApplicationFactory.AuthPassword);
         admin.UseBearer(adminLogin.Token);
 
-        var subscriberResponse = await admin.PostAsJsonAsync("/api/v1/subscribers", new { name = subscriberName });
-        var subscriber = JsonDocument.Parse(await subscriberResponse.Content.ReadAsStringAsync());
-        var subscriberId = subscriber.RootElement.GetProperty("id").GetInt32();
+        var subscriberId = factory.Subscribers.Seed(subscriberName).Id;
 
         var username = $"subscriber-user-{Guid.NewGuid():N}";
         await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "tester-pass-123", role = "Standard", subscriberId });

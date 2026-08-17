@@ -8,11 +8,11 @@ export interface LoginResponse {
   expiresAtUtc: string;
 }
 
+/** Read-only — sourced from the real, external subscriber list. This app never creates/edits/deletes these. */
 export interface Subscriber {
   id: number;
   name: string;
   isActive: boolean;
-  createdAtUtc: string;
 }
 
 export interface ProxyUser {
