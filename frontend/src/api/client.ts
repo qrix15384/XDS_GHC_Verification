@@ -1,8 +1,10 @@
 import type {
   LoginResponse,
   ProxyUser,
+  Subscriber,
   TransactionDetail,
   TransactionFilters,
+  TransactionListItem,
   TransactionPageResult,
 } from "../types/api";
 
@@ -69,19 +71,45 @@ export const api = {
   listUsers: (auth: AuthContextValue) =>
     request<ProxyUser[]>("/api/v1/users", { auth }),
 
-  createUser: (auth: AuthContextValue, username: string, password: string, role: string) =>
+  createUser: (
+    auth: AuthContextValue,
+    username: string,
+    password: string,
+    role: string,
+    subscriberId: number | null,
+  ) =>
     request<ProxyUser>("/api/v1/users", {
       method: "POST",
       auth,
-      body: JSON.stringify({ username, password, role }),
+      body: JSON.stringify({ username, password, role, subscriberId }),
     }),
 
-  updateUser: (auth: AuthContextValue, id: number, role: string, isActive: boolean) =>
+  updateUser: (auth: AuthContextValue, id: number, role: string, isActive: boolean, subscriberId: number | null) =>
     request<void>(`/api/v1/users/${id}`, {
       method: "PUT",
       auth,
-      body: JSON.stringify({ role, isActive }),
+      body: JSON.stringify({ role, isActive, subscriberId }),
     }),
+
+  listSubscribers: (auth: AuthContextValue) =>
+    request<Subscriber[]>("/api/v1/subscribers", { auth }),
+
+  createSubscriber: (auth: AuthContextValue, name: string) =>
+    request<Subscriber>("/api/v1/subscribers", {
+      method: "POST",
+      auth,
+      body: JSON.stringify({ name }),
+    }),
+
+  updateSubscriber: (auth: AuthContextValue, id: number, name: string, isActive: boolean) =>
+    request<void>(`/api/v1/subscribers/${id}`, {
+      method: "PUT",
+      auth,
+      body: JSON.stringify({ name, isActive }),
+    }),
+
+  deleteSubscriber: (auth: AuthContextValue, id: number) =>
+    request<void>(`/api/v1/subscribers/${id}`, { method: "DELETE", auth }),
 
   resetPassword: (auth: AuthContextValue, id: number, newPassword: string) =>
     request<void>(`/api/v1/users/${id}/reset-password`, {
@@ -101,6 +129,34 @@ export const api = {
       }
     }
     return request<TransactionPageResult>(`/api/v1/transactions?${params}`, { auth });
+  },
+
+  /**
+   * Fetches every row matching the given filters (ignoring `page`), paging
+   * through the server's 100-row-per-request cap — used for exports, where
+   * "download this date range" should mean the whole range, not one page.
+   * Capped at EXPORT_ROW_LIMIT rows as a safety backstop; `truncated` tells
+   * the caller whether that cap was actually hit so it isn't silently lossy.
+   */
+  listAllTransactions: async (
+    auth: AuthContextValue,
+    filters: Omit<TransactionFilters, "page" | "pageSize">,
+  ): Promise<{ items: TransactionListItem[]; truncated: boolean }> => {
+    const EXPORT_ROW_LIMIT = 5000;
+    const pageSize = 100;
+    let page = 1;
+    let items: TransactionListItem[] = [];
+    let totalCount = Infinity;
+
+    while (items.length < totalCount && items.length < EXPORT_ROW_LIMIT) {
+      const result = await api.listTransactions(auth, { ...filters, page, pageSize });
+      items = items.concat(result.items);
+      totalCount = result.totalCount;
+      page += 1;
+      if (result.items.length === 0) break;
+    }
+
+    return { items: items.slice(0, EXPORT_ROW_LIMIT), truncated: totalCount > EXPORT_ROW_LIMIT };
   },
 
   getTransaction: (auth: AuthContextValue, id: number) =>

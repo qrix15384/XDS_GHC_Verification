@@ -15,8 +15,14 @@ namespace XDS_GHC_Verification.Tests.Infrastructure;
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
     public FakeAuditLogService AuditLog { get; } = new();
-    public FakeProxyUserService ProxyUsers { get; } = new();
+    public FakeSubscriberService Subscribers { get; } = new();
+    public FakeProxyUserService ProxyUsers { get; }
     public FakeTransactionQueryService Transactions { get; } = new();
+
+    public CustomWebApplicationFactory()
+    {
+        ProxyUsers = new FakeProxyUserService(Subscribers);
+    }
 
     /// <summary>Set per-test to control what the "upstream API" returns.</summary>
     public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> UpstreamHandler { get; set; } =
@@ -63,6 +69,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IProxyUserService>();
             services.AddSingleton<IProxyUserService>(ProxyUsers);
+
+            services.RemoveAll<ISubscriberService>();
+            services.AddSingleton<ISubscriberService>(Subscribers);
 
             services.RemoveAll<ITransactionQueryService>();
             services.AddSingleton<ITransactionQueryService>(Transactions);

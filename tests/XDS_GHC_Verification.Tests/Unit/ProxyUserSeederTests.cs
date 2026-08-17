@@ -34,7 +34,7 @@ public class ProxyUserSeederTests
     public async Task SeedAdminIfEmptyAsync_WhenUsersAlreadyExist_DoesNothing()
     {
         var users = new FakeProxyUserService();
-        await users.CreateAsync("existing-user", "irrelevant-hash", "Standard");
+        await users.CreateAsync("existing-user", "irrelevant-hash", "Standard", subscriberId: null);
         var options = Microsoft.Extensions.Options.Options.Create(new ServiceAuthOptions
         {
             AuthUsername = "seed-admin",

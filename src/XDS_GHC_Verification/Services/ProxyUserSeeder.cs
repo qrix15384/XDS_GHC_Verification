@@ -26,6 +26,6 @@ public static class ProxyUserSeeder
         var seedUser = new ProxyUser { Username = opts.AuthUsername, Role = "Admin" };
         var passwordHash = passwordHasher.HashPassword(seedUser, opts.AuthPassword);
 
-        await users.CreateAsync(opts.AuthUsername, passwordHash, "Admin", ct);
+        await users.CreateAsync(opts.AuthUsername, passwordHash, "Admin", subscriberId: null, ct);
     }
 }

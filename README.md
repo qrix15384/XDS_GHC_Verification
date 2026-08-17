@@ -35,9 +35,10 @@ A production-ready **ASP.NET Core (.NET 10) Web API** that acts as a secure, aut
 ```cmd
 sqlcmd -S <server> -E -i sql\001_create_xds_ghc_verification_database.sql
 sqlcmd -S <server> -d XdsGhcVerification -E -i sql\002_add_proxy_users_table.sql
+sqlcmd -S <server> -d XdsGhcVerification -E -i sql\003_add_subscribers_table.sql
 ```
 
-Edit `001` first and replace `<CHANGE_ME_STRONG_PASSWORD>` with a freshly generated password — never commit a real one. `001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and a least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only). `002` is additive — safe to re-run — and adds the `ProxyUsers` table (individual login accounts), granting `xds_ghc_svc` full CRUD on just that table.
+Edit `001` first and replace `<CHANGE_ME_STRONG_PASSWORD>` with a freshly generated password — never commit a real one. `001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and a least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only). `002` and `003` are additive — safe to re-run — and add the `ProxyUsers` table (individual login accounts) and the `Subscribers` table (client organizations, e.g. a bank or telco, that a `ProxyUsers` account can belong to) respectively, granting `xds_ghc_svc` full CRUD on just those tables.
 
 ### 3. Configure local secrets
 
@@ -154,11 +155,12 @@ curl -X POST http://localhost:5000/api/v1/proxy/orders \
 
 A separate frontend app (`frontend/`, Vite + React + TypeScript) for managing accounts, browsing the audit log, and testing the live API without curl. It's a plain client of this API — see step 5 above to run it. It authenticates against the same `/api/v1/auth/login` endpoint, then uses the returned `token` (JWT) as `Authorization: Bearer <token>` for its own endpoints, and the returned `apiKey` as `X-API-Key` when it calls the selfie/proxy endpoints on your behalf.
 
-- **Users tab** (Admin role only) — create, edit (role/active), reset password, and delete `ProxyUsers` accounts via `/api/v1/users`. An Admin cannot demote, deactivate, or delete their own account, and the last active Admin can't be removed — both guarded server-side.
-- **Transactions tab** — browse `ApiTransactionLog` via `/api/v1/transactions` (paginated, filterable by username/endpoint). Admins see the full row including the Ghana Card PIN and NIA response payload; Standard-role accounts see a redacted summary with the PIN and payload withheld.
+- **Users tab** (Admin role only) — create, edit (role/active/subscriber), reset password, and delete `ProxyUsers` accounts via `/api/v1/users`. An Admin cannot demote, deactivate, or delete their own account, and the last active Admin can't be removed — both guarded server-side.
+- **Subscribers tab** (Admin role only) — manage client organizations (e.g. a bank or telco) via `/api/v1/subscribers`. Assign a `ProxyUsers` account to one from the Users tab; a subscriber with accounts still assigned can't be deleted until they're reassigned or removed.
+- **Transactions tab** — browse `ApiTransactionLog` via `/api/v1/transactions` (paginated, filterable by username, subscriber, and a from/to date range). Admins see the full row including the Ghana Card PIN and NIA response payload; Standard-role accounts see a redacted summary with the PIN and payload withheld. "Export Excel"/"Export PDF" download every row matching the current filters (not just the visible page), capped at 5000 rows.
 - **Test API tab** — exercises the real endpoints above as an authenticated caller. The Selfie Verification panel captures a photo **live from the browser camera only** (no file-upload option) at 640×480, checks it's under the vendor's 1MB cap client-side before sending, and posts it to the real KYC/YES-NO endpoints with a PIN you type in. A Generic Proxy panel does the same for the catch-all proxy (method/path/JSON body).
 
-Every call made through this console (not just login) is attributed to the real logged-in username in `ApiTransactionLog.Username`, instead of the one generic `ServiceAuth:AuthUsername` value that external `X-API-Key`-only clients still show up as.
+Every call made through this console (not just login) is attributed to the real logged-in username **and their assigned subscriber** in `ApiTransactionLog.Username`/`SubscriberName`, instead of the one generic `ServiceAuth:AuthUsername` value (and no subscriber) that external `X-API-Key`-only clients still show up as.
 
 ---
 

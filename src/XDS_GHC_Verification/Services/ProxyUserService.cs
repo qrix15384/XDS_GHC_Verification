@@ -9,12 +9,13 @@ public interface IProxyUserService
     Task<ProxyUser?> FindByUsernameAsync(string username, CancellationToken ct = default);
     Task<ProxyUser?> FindByIdAsync(int id, CancellationToken ct = default);
     Task<IReadOnlyList<ProxyUser>> ListAsync(CancellationToken ct = default);
-    Task<ProxyUser> CreateAsync(string username, string passwordHash, string role, CancellationToken ct = default);
-    Task UpdateRoleAndStatusAsync(int id, string role, bool isActive, CancellationToken ct = default);
+    Task<ProxyUser> CreateAsync(string username, string passwordHash, string role, int? subscriberId, CancellationToken ct = default);
+    Task UpdateRoleAndStatusAsync(int id, string role, bool isActive, int? subscriberId, CancellationToken ct = default);
     Task UpdatePasswordHashAsync(int id, string passwordHash, CancellationToken ct = default);
     Task DeleteAsync(int id, CancellationToken ct = default);
     Task<int> CountAsync(CancellationToken ct = default);
     Task<int> CountActiveAdminsAsync(CancellationToken ct = default);
+    Task<int> CountBySubscriberIdAsync(int subscriberId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -26,6 +27,11 @@ public interface IProxyUserService
 /// </summary>
 public class ProxyUserService : IProxyUserService
 {
+    private const string SelectColumns = """
+        u.Id, u.Username, u.PasswordHash, u.Role, u.IsActive, u.CreatedAtUtc, u.SubscriberId,
+        s.Name AS SubscriberName
+        """;
+
     private readonly string _connectionString;
 
     public ProxyUserService(IConfiguration configuration)
@@ -38,7 +44,11 @@ public class ProxyUserService : IProxyUserService
     {
         await using var connection = new SqlConnection(_connectionString);
         return await connection.QuerySingleOrDefaultAsync<ProxyUser>(new CommandDefinition(
-            "SELECT Id, Username, PasswordHash, Role, IsActive, CreatedAtUtc FROM dbo.ProxyUsers WHERE Username = @username",
+            $"""
+            SELECT {SelectColumns}
+            FROM dbo.ProxyUsers u LEFT JOIN dbo.Subscribers s ON s.Id = u.SubscriberId
+            WHERE u.Username = @username
+            """,
             new { username }, cancellationToken: ct));
     }
 
@@ -46,7 +56,11 @@ public class ProxyUserService : IProxyUserService
     {
         await using var connection = new SqlConnection(_connectionString);
         return await connection.QuerySingleOrDefaultAsync<ProxyUser>(new CommandDefinition(
-            "SELECT Id, Username, PasswordHash, Role, IsActive, CreatedAtUtc FROM dbo.ProxyUsers WHERE Id = @id",
+            $"""
+            SELECT {SelectColumns}
+            FROM dbo.ProxyUsers u LEFT JOIN dbo.Subscribers s ON s.Id = u.SubscriberId
+            WHERE u.Id = @id
+            """,
             new { id }, cancellationToken: ct));
     }
 
@@ -54,39 +68,36 @@ public class ProxyUserService : IProxyUserService
     {
         await using var connection = new SqlConnection(_connectionString);
         var users = await connection.QueryAsync<ProxyUser>(new CommandDefinition(
-            "SELECT Id, Username, PasswordHash, Role, IsActive, CreatedAtUtc FROM dbo.ProxyUsers ORDER BY Username",
+            $"""
+            SELECT {SelectColumns}
+            FROM dbo.ProxyUsers u LEFT JOIN dbo.Subscribers s ON s.Id = u.SubscriberId
+            ORDER BY u.Username
+            """,
             cancellationToken: ct));
         return users.ToList();
     }
 
-    public async Task<ProxyUser> CreateAsync(string username, string passwordHash, string role, CancellationToken ct = default)
+    public async Task<ProxyUser> CreateAsync(string username, string passwordHash, string role, int? subscriberId, CancellationToken ct = default)
     {
         await using var connection = new SqlConnection(_connectionString);
         var id = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
             """
-            INSERT INTO dbo.ProxyUsers (Username, PasswordHash, Role)
+            INSERT INTO dbo.ProxyUsers (Username, PasswordHash, Role, SubscriberId)
             OUTPUT INSERTED.Id
-            VALUES (@username, @passwordHash, @role);
+            VALUES (@username, @passwordHash, @role, @subscriberId);
             """,
-            new { username, passwordHash, role }, cancellationToken: ct));
+            new { username, passwordHash, role, subscriberId }, cancellationToken: ct));
 
-        return new ProxyUser
-        {
-            Id = id,
-            Username = username,
-            PasswordHash = passwordHash,
-            Role = role,
-            IsActive = true,
-            CreatedAtUtc = DateTime.UtcNow,
-        };
+        return await FindByIdAsync(id, ct)
+            ?? throw new InvalidOperationException("Failed to read back the just-created ProxyUsers row.");
     }
 
-    public async Task UpdateRoleAndStatusAsync(int id, string role, bool isActive, CancellationToken ct = default)
+    public async Task UpdateRoleAndStatusAsync(int id, string role, bool isActive, int? subscriberId, CancellationToken ct = default)
     {
         await using var connection = new SqlConnection(_connectionString);
         await connection.ExecuteAsync(new CommandDefinition(
-            "UPDATE dbo.ProxyUsers SET Role = @role, IsActive = @isActive WHERE Id = @id",
-            new { id, role, isActive }, cancellationToken: ct));
+            "UPDATE dbo.ProxyUsers SET Role = @role, IsActive = @isActive, SubscriberId = @subscriberId WHERE Id = @id",
+            new { id, role, isActive, subscriberId }, cancellationToken: ct));
     }
 
     public async Task UpdatePasswordHashAsync(int id, string passwordHash, CancellationToken ct = default)
@@ -117,5 +128,13 @@ public class ProxyUserService : IProxyUserService
         await using var connection = new SqlConnection(_connectionString);
         return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
             "SELECT COUNT(*) FROM dbo.ProxyUsers WHERE Role = 'Admin' AND IsActive = 1", cancellationToken: ct));
+    }
+
+    public async Task<int> CountBySubscriberIdAsync(int subscriberId, CancellationToken ct = default)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM dbo.ProxyUsers WHERE SubscriberId = @subscriberId",
+            new { subscriberId }, cancellationToken: ct));
     }
 }

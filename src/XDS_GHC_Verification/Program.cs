@@ -23,6 +23,7 @@ builder.Services.AddHttpClient<UpstreamClient>();
 builder.Services.AddScoped<SelfieVerificationService>();
 builder.Services.AddSingleton<IAuditLogService, AuditLogService>();
 builder.Services.AddSingleton<IProxyUserService, ProxyUserService>();
+builder.Services.AddSingleton<ISubscriberService, SubscriberService>();
 builder.Services.AddSingleton<ITransactionQueryService, TransactionQueryService>();
 builder.Services.AddSingleton<IPasswordHasher<ProxyUser>, PasswordHasher<ProxyUser>>();
 builder.Services.AddSingleton<JwtTokenService>();

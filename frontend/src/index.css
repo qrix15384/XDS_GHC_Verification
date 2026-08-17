@@ -123,6 +123,15 @@ textarea {
   gap: 0.5rem;
   margin-bottom: 1rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.date-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 table {

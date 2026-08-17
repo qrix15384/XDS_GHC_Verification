@@ -44,7 +44,8 @@ public class TransactionQueryService : ITransactionQueryService
         var items = await connection.QueryAsync<TransactionListItem>(new CommandDefinition(
             $"""
             SELECT Id, RequestId, RequestAtUtc, EndpointPath, HttpMethod, Username,
-                   HttpStatusCode, DetailsFound, ErrorMessage, DurationMs, PinNumber
+                   HttpStatusCode, DetailsFound, ErrorMessage, DurationMs, PinNumber,
+                   SubscriberId, SubscriberName
             FROM dbo.ApiTransactionLog
             {whereClause}
             ORDER BY RequestAtUtc DESC
@@ -68,6 +69,7 @@ public class TransactionQueryService : ITransactionQueryService
             """
             SELECT Id, RequestId, RequestAtUtc, EndpointPath, HttpMethod, Username,
                    HttpStatusCode, DetailsFound, ErrorMessage, DurationMs, PinNumber,
+                   SubscriberId, SubscriberName,
                    ResponsePayload AS RawResponsePayload
             FROM dbo.ApiTransactionLog
             WHERE Id = @id;
@@ -126,6 +128,11 @@ public class TransactionQueryService : ITransactionQueryService
         {
             conditions.Add("RequestAtUtc <= @toUtc");
             parameters.Add("@toUtc", filter.ToUtc);
+        }
+        if (filter.SubscriberId is not null)
+        {
+            conditions.Add("SubscriberId = @subscriberId");
+            parameters.Add("@subscriberId", filter.SubscriberId);
         }
 
         if (conditions.Count == 0)

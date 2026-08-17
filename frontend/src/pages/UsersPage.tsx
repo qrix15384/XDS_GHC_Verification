@@ -1,20 +1,26 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import type { ProxyUser } from "../types/api";
+import type { ProxyUser, Subscriber } from "../types/api";
+
+const NO_SUBSCRIBER = "";
 
 export function UsersPage() {
   const { session } = useAuth();
   const auth = session!;
   const [users, setUsers] = useState<ProxyUser[]>([]);
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"Admin" | "Standard">("Standard");
+  const [newSubscriberId, setNewSubscriberId] = useState(NO_SUBSCRIBER);
 
   async function reload() {
     try {
-      setUsers(await api.listUsers(auth));
+      const [userList, subscriberList] = await Promise.all([api.listUsers(auth), api.listSubscribers(auth)]);
+      setUsers(userList);
+      setSubscribers(subscriberList);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : "Failed to load users.");
     }
@@ -29,10 +35,17 @@ export function UsersPage() {
     e.preventDefault();
     setError(null);
     try {
-      await api.createUser(auth, newUsername, newPassword, newRole);
+      await api.createUser(
+        auth,
+        newUsername,
+        newPassword,
+        newRole,
+        newSubscriberId ? Number(newSubscriberId) : null,
+      );
       setNewUsername("");
       setNewPassword("");
       setNewRole("Standard");
+      setNewSubscriberId(NO_SUBSCRIBER);
       await reload();
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : "Failed to create user.");
@@ -42,7 +55,7 @@ export function UsersPage() {
   async function handleToggleActive(user: ProxyUser) {
     setError(null);
     try {
-      await api.updateUser(auth, user.id, user.role, !user.isActive);
+      await api.updateUser(auth, user.id, user.role, !user.isActive, user.subscriberId);
       await reload();
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : "Failed to update user.");
@@ -53,7 +66,17 @@ export function UsersPage() {
     setError(null);
     const newUserRole = user.role === "Admin" ? "Standard" : "Admin";
     try {
-      await api.updateUser(auth, user.id, newUserRole, user.isActive);
+      await api.updateUser(auth, user.id, newUserRole, user.isActive, user.subscriberId);
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : "Failed to update user.");
+    }
+  }
+
+  async function handleSubscriberChange(user: ProxyUser, subscriberIdValue: string) {
+    setError(null);
+    try {
+      await api.updateUser(auth, user.id, user.role, user.isActive, subscriberIdValue ? Number(subscriberIdValue) : null);
       await reload();
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : "Failed to update user.");
@@ -105,6 +128,14 @@ export function UsersPage() {
           <option value="Standard">Standard</option>
           <option value="Admin">Admin</option>
         </select>
+        <select value={newSubscriberId} onChange={(e) => setNewSubscriberId(e.target.value)}>
+          <option value={NO_SUBSCRIBER}>No subscriber</option>
+          {subscribers.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
         <button type="submit">Create user</button>
       </form>
 
@@ -116,6 +147,7 @@ export function UsersPage() {
             <th>Username</th>
             <th>Role</th>
             <th>Active</th>
+            <th>Subscriber</th>
             <th>Created</th>
             <th>Actions</th>
           </tr>
@@ -126,6 +158,19 @@ export function UsersPage() {
               <td>{user.username}</td>
               <td>{user.role}</td>
               <td>{user.isActive ? "Yes" : "No"}</td>
+              <td>
+                <select
+                  value={user.subscriberId ?? NO_SUBSCRIBER}
+                  onChange={(e) => handleSubscriberChange(user, e.target.value)}
+                >
+                  <option value={NO_SUBSCRIBER}>None</option>
+                  {subscribers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </td>
               <td>{new Date(user.createdAtUtc).toLocaleString()}</td>
               <td className="actions">
                 <button onClick={() => handleToggleRole(user)}>

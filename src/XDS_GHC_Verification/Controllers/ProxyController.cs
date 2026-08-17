@@ -32,6 +32,8 @@ public class ProxyController(UpstreamClient upstream, IAuditLogService auditLog,
         var stopwatch = Stopwatch.StartNew();
         var endpoint = $"/api/v1/proxy/{path}";
         var method = new HttpMethod(Request.Method);
+        var username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername);
+        var (subscriberId, subscriberName) = HttpContext.ResolveAuditSubscriber();
 
         using var ms = new MemoryStream();
         await Request.Body.CopyToAsync(ms, ct);
@@ -59,11 +61,13 @@ public class ProxyController(UpstreamClient upstream, IAuditLogService auditLog,
             {
                 EndpointPath = endpoint,
                 HttpMethod = Request.Method,
-                Username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername),
+                Username = username,
                 HttpStatusCode = statusCode,
                 ResponsePayload = responseBody,
                 DetailsFound = isEmpty ? "N" : "Y",
                 DurationMs = (int)stopwatch.ElapsedMilliseconds,
+                SubscriberId = subscriberId,
+                SubscriberName = subscriberName,
             }, ct);
 
             return Ok(responseBody);
@@ -74,12 +78,14 @@ public class ProxyController(UpstreamClient upstream, IAuditLogService auditLog,
             {
                 EndpointPath = endpoint,
                 HttpMethod = Request.Method,
-                Username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername),
+                Username = username,
                 HttpStatusCode = ex.StatusCode,
                 RawResponsePayload = ex.Detail?.ToString(),
                 DetailsFound = "N",
                 ErrorMessage = ex.Message,
                 DurationMs = (int)stopwatch.ElapsedMilliseconds,
+                SubscriberId = subscriberId,
+                SubscriberName = subscriberName,
             }, ct);
 
             return StatusCode(ex.StatusCode, new { detail = ex.Detail });

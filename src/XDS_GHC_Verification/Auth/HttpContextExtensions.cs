@@ -1,3 +1,5 @@
+using XDS_GHC_Verification.Services;
+
 namespace XDS_GHC_Verification.Auth;
 
 public static class HttpContextExtensions
@@ -11,4 +13,21 @@ public static class HttpContextExtensions
         context.User.Identity?.IsAuthenticated == true
             ? context.User.Identity.Name ?? fallback
             : fallback;
+
+    /// <summary>
+    /// Returns the authenticated caller's subscriber (organization), if their
+    /// JWT carries one, so audit-log rows can be attributed to it. Null for
+    /// callers with no bearer token, or whose account has no subscriber assigned.
+    /// </summary>
+    public static (int? SubscriberId, string? SubscriberName) ResolveAuditSubscriber(this HttpContext context)
+    {
+        if (context.User.Identity?.IsAuthenticated != true)
+        {
+            return (null, null);
+        }
+
+        var idClaim = context.User.FindFirst(JwtTokenService.SubscriberIdClaimType)?.Value;
+        var nameClaim = context.User.FindFirst(JwtTokenService.SubscriberNameClaimType)?.Value;
+        return int.TryParse(idClaim, out var subscriberId) ? (subscriberId, nameClaim) : (null, null);
+    }
 }

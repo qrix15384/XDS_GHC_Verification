@@ -36,6 +36,26 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
         return client;
     }
 
+    private async Task<HttpClient> SubscriberLinkedClientAsync(string subscriberName)
+    {
+        var admin = factory.CreateClient();
+        var adminLogin = await TestAuthHelper.LoginAsync(admin, CustomWebApplicationFactory.AuthUsername, CustomWebApplicationFactory.AuthPassword);
+        admin.UseBearer(adminLogin.Token);
+
+        var subscriberResponse = await admin.PostAsJsonAsync("/api/v1/subscribers", new { name = subscriberName });
+        var subscriber = JsonDocument.Parse(await subscriberResponse.Content.ReadAsStringAsync());
+        var subscriberId = subscriber.RootElement.GetProperty("id").GetInt32();
+
+        var username = $"subscriber-user-{Guid.NewGuid():N}";
+        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "tester-pass-123", role = "Standard", subscriberId });
+
+        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "tester-pass-123");
+        var client = factory.CreateClient();
+        client.UseBearer(login.Token);
+        client.DefaultRequestHeaders.Add("X-API-Key", CustomWebApplicationFactory.ApiKey);
+        return client;
+    }
+
     [Fact]
     public async Task KycFace_UpstreamFindsMatch_ReturnsUpstreamBodyAndLogsFound()
     {
@@ -174,5 +194,28 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var entry = Assert.Single(factory.AuditLog.Entries);
         Assert.Equal(CustomWebApplicationFactory.AuthUsername, entry.Username);
+    }
+
+    [Fact]
+    public async Task KycFace_CallerBelongsToSubscriber_AttributesAuditLogToThatSubscriber()
+    {
+        var subscriberName = $"Acme Bank {Guid.NewGuid():N}";
+        var client = await SubscriberLinkedClientAsync(subscriberName);
+        factory.AuditLog.Entries.Clear();
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"code":"00"}""", Encoding.UTF8, "application/json"),
+        });
+
+        var response = await client.PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-123456789-0",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var entry = Assert.Single(factory.AuditLog.Entries);
+        Assert.Equal(subscriberName, entry.SubscriberName);
+        Assert.NotNull(entry.SubscriberId);
     }
 }

@@ -42,6 +42,9 @@ public class SelfieController(
         CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
+        var username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername);
+        var (subscriberId, subscriberName) = HttpContext.ResolveAuditSubscriber();
+
         string cleanedImage;
         try
         {
@@ -60,12 +63,14 @@ public class SelfieController(
             {
                 EndpointPath = endpoint,
                 HttpMethod = "POST",
-                Username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername),
+                Username = username,
                 HttpStatusCode = statusCode,
                 ResponsePayload = body,
                 DetailsFound = detailsFoundFn(body),
                 PinNumber = payload.PinNumber,
                 DurationMs = (int)stopwatch.ElapsedMilliseconds,
+                SubscriberId = subscriberId,
+                SubscriberName = subscriberName,
             }, ct);
 
             return Ok(body);
@@ -76,7 +81,7 @@ public class SelfieController(
             {
                 EndpointPath = endpoint,
                 HttpMethod = "POST",
-                Username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername),
+                Username = username,
                 HttpStatusCode = ex.StatusCode,
                 ResponsePayload = ex.Detail as JsonNode,
                 RawResponsePayload = ex.Detail is JsonNode ? null : ex.Detail?.ToString(),
@@ -84,6 +89,8 @@ public class SelfieController(
                 ErrorMessage = ex.Message,
                 PinNumber = payload.PinNumber,
                 DurationMs = (int)stopwatch.ElapsedMilliseconds,
+                SubscriberId = subscriberId,
+                SubscriberName = subscriberName,
             }, ct);
 
             return StatusCode(ex.StatusCode, new { detail = ex.Detail });

@@ -88,8 +88,8 @@ public class AuthControllerTests(CustomWebApplicationFactory factory) : IClassFi
         var created = await factory.ProxyUsers.CreateAsync(
             $"inactive-{Guid.NewGuid():N}", new Microsoft.AspNetCore.Identity.PasswordHasher<XDS_GHC_Verification.Models.ProxyUser>()
                 .HashPassword(new XDS_GHC_Verification.Models.ProxyUser(), "some-password-123"),
-            "Standard");
-        await factory.ProxyUsers.UpdateRoleAndStatusAsync(created.Id, "Standard", isActive: false);
+            "Standard", subscriberId: null);
+        await factory.ProxyUsers.UpdateRoleAndStatusAsync(created.Id, "Standard", isActive: false, subscriberId: null);
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/v1/auth/login", new

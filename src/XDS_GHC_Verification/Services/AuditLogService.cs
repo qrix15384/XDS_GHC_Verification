@@ -18,6 +18,8 @@ public record AuditLogEntry
     public string? ErrorMessage { get; init; }
     public int? DurationMs { get; init; }
     public string? PinNumber { get; init; }
+    public int? SubscriberId { get; init; }
+    public string? SubscriberName { get; init; }
 }
 
 public interface IAuditLogService
@@ -36,10 +38,10 @@ public class AuditLogService : IAuditLogService
     private const string InsertSql = """
         INSERT INTO dbo.ApiTransactionLog
             (EndpointPath, HttpMethod, Username, HttpStatusCode, ResponsePayload,
-             DetailsFound, ErrorMessage, DurationMs, PinNumber)
+             DetailsFound, ErrorMessage, DurationMs, PinNumber, SubscriberId, SubscriberName)
         VALUES
             (@EndpointPath, @HttpMethod, @Username, @HttpStatusCode, @ResponsePayload,
-             @DetailsFound, @ErrorMessage, @DurationMs, @PinNumber);
+             @DetailsFound, @ErrorMessage, @DurationMs, @PinNumber, @SubscriberId, @SubscriberName);
         """;
 
     private readonly string _connectionString;
@@ -68,6 +70,8 @@ public class AuditLogService : IAuditLogService
                 ErrorMessage = Truncate(entry.ErrorMessage, 500),
                 entry.DurationMs,
                 PinNumber = Truncate(entry.PinNumber, 20),
+                entry.SubscriberId,
+                SubscriberName = Truncate(entry.SubscriberName, 200),
             }, cancellationToken: ct));
         }
         catch (Exception ex)

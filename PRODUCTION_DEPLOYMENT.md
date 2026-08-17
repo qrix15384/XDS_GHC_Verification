@@ -43,9 +43,10 @@ Edit `sql/001_create_xds_ghc_verification_database.sql` first and replace `<CHAN
 ```cmd
 sqlcmd -S <db-server> -E -i sql\001_create_xds_ghc_verification_database.sql
 sqlcmd -S <db-server> -d XdsGhcVerification -E -i sql\002_add_proxy_users_table.sql
+sqlcmd -S <db-server> -d XdsGhcVerification -E -i sql\003_add_subscribers_table.sql
 ```
 
-`001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and the least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only — no `db_owner`, no `sysadmin`). `002` is additive and safe to re-run — it adds the `ProxyUsers` table (individual login accounts, replacing the old single shared username/password check) and grants `xds_ghc_svc` full CRUD on just that one table.
+`001` creates the `XdsGhcVerification` database, the `ApiTransactionLog` table, and the least-privilege `xds_ghc_svc` login (`SELECT`/`INSERT` only — no `db_owner`, no `sysadmin`). `002` and `003` are additive and safe to re-run — `002` adds the `ProxyUsers` table (individual login accounts, replacing the old single shared username/password check), `003` adds the `Subscribers` table (client organizations a `ProxyUsers` account can belong to) plus the `SubscriberId`/`SubscriberName` columns on `ApiTransactionLog` — each grants `xds_ghc_svc` full CRUD on just its own new table.
 
 > **`001` drops and recreates `ApiTransactionLog`.** Run it once, on initial provisioning. If the table already holds production data, do **not** re-run this file — write a new, additive `00N_*.sql` script instead, following `002`'s pattern.
 

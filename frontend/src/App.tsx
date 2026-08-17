@@ -4,6 +4,7 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { Nav } from "./components/Nav";
 import { LoginPage } from "./pages/LoginPage";
 import { UsersPage } from "./pages/UsersPage";
+import { SubscribersPage } from "./pages/SubscribersPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 import { TestApiPage } from "./pages/TestApiPage";
 
@@ -18,6 +19,14 @@ export default function App() {
           element={
             <RequireAuth role="Admin">
               <UsersPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/subscribers"
+          element={
+            <RequireAuth role="Admin">
+              <SubscribersPage />
             </RequireAuth>
           }
         />

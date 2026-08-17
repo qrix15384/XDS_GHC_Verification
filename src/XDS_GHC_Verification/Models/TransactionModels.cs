@@ -25,6 +25,7 @@ public class TransactionQuery
     public string? DetailsFound { get; set; }
     public DateTime? FromUtc { get; set; }
     public DateTime? ToUtc { get; set; }
+    public int? SubscriberId { get; set; }
 }
 
 /// <summary>Summary row for the transactions list — excludes the (potentially large) ResponsePayload.</summary>
@@ -43,6 +44,9 @@ public class TransactionListItem
 
     /// <summary>Redacted (set to null) for non-Admin callers by TransactionsController.</summary>
     public string? PinNumber { get; set; }
+
+    public int? SubscriberId { get; set; }
+    public string? SubscriberName { get; set; }
 }
 
 /// <summary>Full detail for a single transaction — Admin-only, includes the response payload.</summary>

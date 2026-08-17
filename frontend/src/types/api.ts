@@ -8,12 +8,21 @@ export interface LoginResponse {
   expiresAtUtc: string;
 }
 
+export interface Subscriber {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAtUtc: string;
+}
+
 export interface ProxyUser {
   id: number;
   username: string;
   role: Role;
   isActive: boolean;
   createdAtUtc: string;
+  subscriberId: number | null;
+  subscriberName: string | null;
 }
 
 export interface TransactionListItem {
@@ -28,6 +37,8 @@ export interface TransactionListItem {
   errorMessage: string | null;
   durationMs: number | null;
   pinNumber: string | null;
+  subscriberId: number | null;
+  subscriberName: string | null;
 }
 
 export interface TransactionDetail extends TransactionListItem {
@@ -49,4 +60,9 @@ export interface TransactionFilters {
   endpointPath?: string;
   httpStatusCode?: number;
   detailsFound?: string;
+  /** ISO 8601 — inclusive start of range (UTC). */
+  fromUtc?: string;
+  /** ISO 8601 — inclusive end of range (UTC). */
+  toUtc?: string;
+  subscriberId?: number;
 }

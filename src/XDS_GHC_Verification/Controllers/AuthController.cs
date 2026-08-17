@@ -46,6 +46,8 @@ public class AuthController(
             DetailsFound = isValid ? "Y" : "N",
             ErrorMessage = isValid ? null : "Invalid username or password.",
             DurationMs = (int)stopwatch.ElapsedMilliseconds,
+            SubscriberId = user?.SubscriberId,
+            SubscriberName = user?.SubscriberName,
         }, ct);
 
         if (!isValid)

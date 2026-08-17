@@ -11,9 +11,14 @@ export function Nav() {
     <nav className="nav">
       <div className="nav-links">
         {session.role === "Admin" && (
-          <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>
-            Users
-          </NavLink>
+          <>
+            <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>
+              Users
+            </NavLink>
+            <NavLink to="/subscribers" className={({ isActive }) => (isActive ? "active" : "")}>
+              Subscribers
+            </NavLink>
+          </>
         )}
         <NavLink to="/transactions" className={({ isActive }) => (isActive ? "active" : "")}>
           Transactions

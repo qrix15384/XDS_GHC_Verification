@@ -14,7 +14,10 @@ namespace XDS_GHC_Verification.Controllers;
 [ApiController]
 [Route("api/v1/users")]
 [Authorize(Roles = "Admin")]
-public class ProxyUsersController(IProxyUserService users, IPasswordHasher<ProxyUser> passwordHasher) : ControllerBase
+public class ProxyUsersController(
+    IProxyUserService users,
+    ISubscriberService subscribers,
+    IPasswordHasher<ProxyUser> passwordHasher) : ControllerBase
 {
     private static readonly string[] ValidRoles = ["Admin", "Standard"];
 
@@ -33,6 +36,11 @@ public class ProxyUsersController(IProxyUserService users, IPasswordHasher<Proxy
             return BadRequest(new { detail = $"Role must be one of: {string.Join(", ", ValidRoles)}." });
         }
 
+        if (payload.SubscriberId is { } subscriberId && await subscribers.FindByIdAsync(subscriberId, ct) is null)
+        {
+            return BadRequest(new { detail = "Unknown subscriber." });
+        }
+
         if (await users.FindByUsernameAsync(payload.Username, ct) is not null)
         {
             return Conflict(new { detail = "A user with that username already exists." });
@@ -40,7 +48,7 @@ public class ProxyUsersController(IProxyUserService users, IPasswordHasher<Proxy
 
         var newUser = new ProxyUser { Username = payload.Username, Role = payload.Role };
         var passwordHash = passwordHasher.HashPassword(newUser, payload.Password);
-        var created = await users.CreateAsync(payload.Username, passwordHash, payload.Role, ct);
+        var created = await users.CreateAsync(payload.Username, passwordHash, payload.Role, payload.SubscriberId, ct);
 
         return Ok(ProxyUserResponse.FromEntity(created));
     }
@@ -51,6 +59,11 @@ public class ProxyUsersController(IProxyUserService users, IPasswordHasher<Proxy
         if (!ValidRoles.Contains(payload.Role))
         {
             return BadRequest(new { detail = $"Role must be one of: {string.Join(", ", ValidRoles)}." });
+        }
+
+        if (payload.SubscriberId is { } subscriberId && await subscribers.FindByIdAsync(subscriberId, ct) is null)
+        {
+            return BadRequest(new { detail = "Unknown subscriber." });
         }
 
         var target = await users.FindByIdAsync(id, ct);
@@ -73,7 +86,7 @@ public class ProxyUsersController(IProxyUserService users, IPasswordHasher<Proxy
             return BadRequest(new { detail = "Cannot remove the last active Admin account." });
         }
 
-        await users.UpdateRoleAndStatusAsync(id, payload.Role, payload.IsActive, ct);
+        await users.UpdateRoleAndStatusAsync(id, payload.Role, payload.IsActive, payload.SubscriberId, ct);
         return NoContent();
     }
 
