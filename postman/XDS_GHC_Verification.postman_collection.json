@@ -1,0 +1,228 @@
+{
+  "info": {
+    "name": "XDS GHC Verification API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://192.168.1.2:8088/xdsghc" },
+    { "key": "apiKey", "value": "change-me-service-key" },
+    { "key": "jwtToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Get health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('jwtToken', body.token);",
+                  "    pm.collectionVariables.set('apiKey', body.apiKey);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"change-me\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Selfie Verification",
+      "item": [
+        {
+          "name": "KYC face match",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/selfie/verification/kyc/face",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pinNumber\": \"GHA-000000000-0\",\n  \"image\": \"<base64 PNG, min 640x480, under 1MB>\",\n  \"dataType\": \"PNG\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Yes/No face match",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/selfie/verification/yes_no/face",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pinNumber\": \"GHA-000000000-0\",\n  \"image\": \"<base64 PNG, min 640x480, under 1MB>\",\n  \"dataType\": \"PNG\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Proxy (catch-all passthrough)",
+      "item": [
+        {
+          "name": "Forward request",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }],
+            "url": "{{baseUrl}}/api/v1/proxy/<upstream-sub-path>",
+            "description": "Accepts GET/POST/PUT/PATCH/DELETE. Whatever follows /api/v1/proxy/ is forwarded to the configured Upstream:BaseUrl as-is."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transactions (JWT required)",
+      "item": [
+        {
+          "name": "List transactions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwtToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transactions?page=1&pageSize=25",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "transactions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "25" },
+                { "key": "username", "value": "", "disabled": true },
+                { "key": "endpointPath", "value": "", "disabled": true },
+                { "key": "httpStatusCode", "value": "", "disabled": true },
+                { "key": "detailsFound", "value": "", "disabled": true },
+                { "key": "fromUtc", "value": "", "disabled": true },
+                { "key": "toUtc", "value": "", "disabled": true },
+                { "key": "subscriberId", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get transaction by id (Admin only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwtToken}}" }],
+            "url": "{{baseUrl}}/api/v1/transactions/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users (Admin JWT required)",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwtToken}}" }],
+            "url": "{{baseUrl}}/api/v1/users"
+          }
+        },
+        {
+          "name": "Create user",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwtToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/users",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser\",\n  \"password\": \"at-least-8-chars\",\n  \"role\": \"Standard\",\n  \"subscriberId\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "Update user role/status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwtToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/users/1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"Standard\",\n  \"isActive\": true,\n  \"subscriberId\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "Reset user password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwtToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/users/1/reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"at-least-8-chars\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete user",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwtToken}}" }],
+            "url": "{{baseUrl}}/api/v1/users/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscribers (Admin JWT required)",
+      "item": [
+        {
+          "name": "List subscribers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwtToken}}" }],
+            "url": "{{baseUrl}}/api/v1/subscribers"
+          }
+        },
+        {
+          "name": "Get subscriber by id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwtToken}}" }],
+            "url": "{{baseUrl}}/api/v1/subscribers/1"
+          }
+        }
+      ]
+    }
+  ]
+}

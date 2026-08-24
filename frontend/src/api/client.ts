@@ -8,7 +8,11 @@ import type {
   TransactionPageResult,
 } from "../types/api";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
+// VITE_API_BASE_URL points at a separate origin for local dev (the API dev
+// server runs on its own port). When unset (production), fall back to Vite's
+// own BASE_URL so calls stay under whatever sub-path the app is deployed at
+// (e.g. "/xdsghc") instead of resolving against the domain root.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export class ApiError extends Error {
   status: number;
@@ -19,6 +23,24 @@ export class ApiError extends Error {
     this.status = status;
     this.detail = detail;
   }
+}
+
+// The backend's `detail` field is a plain string for validation errors, but
+// for relayed upstream (NIA) rejections it's an object shaped like
+// {data, success, code, msg} — see SelfieController.VerifyAndLogAsync.
+// Pull out the human-readable message in that case instead of collapsing it
+// to the literal string "[object Object]".
+function extractDetail(body: unknown, status: number): string {
+  if (body && typeof body === "object" && "detail" in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object" && "msg" in detail) {
+      const msg = (detail as { msg: unknown }).msg;
+      if (typeof msg === "string") return msg;
+    }
+    if (detail !== undefined) return JSON.stringify(detail);
+  }
+  return `Request failed with status ${status}`;
 }
 
 export interface AuthContextValue {
@@ -52,10 +74,8 @@ async function request<T>(
   const body = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    const detail =
-      (body && typeof body === "object" && "detail" in body && String(body.detail)) ||
-      `Request failed with status ${response.status}`;
-    throw new ApiError(response.status, detail);
+    console.error(`API error ${response.status} for ${path}:`, body);
+    throw new ApiError(response.status, extractDetail(body, response.status));
   }
 
   return body as T;

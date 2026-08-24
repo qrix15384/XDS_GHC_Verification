@@ -9,6 +9,25 @@ interface CameraCaptureProps {
   onCapture: (base64Png: string, sizeBytes: number) => void;
 }
 
+function describeCameraError(err: unknown): string {
+  if (err instanceof DOMException) {
+    switch (err.name) {
+      case "NotAllowedError":
+      case "PermissionDeniedError":
+        return "Camera access was denied. Allow the camera permission for this site in your browser's address-bar/site settings, then try again.";
+      case "NotFoundError":
+      case "DevicesNotFoundError":
+        return "No camera was found on this device.";
+      case "NotReadableError":
+      case "TrackStartError":
+        return "The camera is already in use by another application or browser tab. Close it and try again.";
+      case "OverconstrainedError":
+        return "This camera doesn't support the requested resolution.";
+    }
+  }
+  return err instanceof Error ? err.message : "Could not access the camera.";
+}
+
 /**
  * Live-camera-only image capture — deliberately has no file-upload <input>
  * anywhere, so there is no way to submit an existing PNG file through this
@@ -33,6 +52,12 @@ export function CameraCapture({ onCapture }: CameraCaptureProps) {
     setError(null);
     setStarting(true);
     try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error(
+          `Camera access requires HTTPS or http://localhost — this page is loaded from ` +
+            `${window.location.protocol}//${window.location.hostname}, which the browser treats as insecure.`,
+        );
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
@@ -41,8 +66,9 @@ export function CameraCapture({ onCapture }: CameraCaptureProps) {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
-    } catch {
-      setError("Could not access the camera. Check browser permissions and that you're on http(s)://localhost or HTTPS.");
+    } catch (err) {
+      console.error("Camera access failed:", err);
+      setError(describeCameraError(err));
     } finally {
       setStarting(false);
     }

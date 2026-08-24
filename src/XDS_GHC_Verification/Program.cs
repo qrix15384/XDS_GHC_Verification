@@ -112,10 +112,19 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// Serves the built React app — copy frontend/dist into wwwroot before
+// `dotnet publish` (see the deploy workflow notes); not built automatically.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// Client-side routes (react-router) that don't match a controller or a static
+// file fall back to index.html so deep links / page refreshes keep working.
+app.MapFallbackToFile("index.html");
 
 app.Run();
 
