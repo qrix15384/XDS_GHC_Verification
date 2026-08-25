@@ -26,6 +26,33 @@ export interface AuthContextValue {
   token: string;
 }
 
+/**
+ * The upstream verification service's error `detail` isn't always a plain
+ * string — a business-level failure (e.g. face not detected) comes back as
+ * a nested object with its own `msg` field. Extract that instead of letting
+ * it collapse into the literal string "[object Object]".
+ */
+function extractDetailMessage(detail: unknown): string {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (detail && typeof detail === "object") {
+    const obj = detail as Record<string, unknown>;
+    if (typeof obj.msg === "string") {
+      return obj.msg;
+    }
+    if (typeof obj.detail === "string") {
+      return obj.detail;
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return "Request failed.";
+    }
+  }
+  return "Request failed.";
+}
+
 async function request<T>(
   path: string,
   options: RequestInit & { auth?: Partial<AuthContextValue> } = {},
@@ -53,8 +80,9 @@ async function request<T>(
 
   if (!response.ok) {
     const detail =
-      (body && typeof body === "object" && "detail" in body && String(body.detail)) ||
-      `Request failed with status ${response.status}`;
+      body && typeof body === "object" && "detail" in body
+        ? extractDetailMessage(body.detail)
+        : `Request failed with status ${response.status}`;
     throw new ApiError(response.status, detail);
   }
 
