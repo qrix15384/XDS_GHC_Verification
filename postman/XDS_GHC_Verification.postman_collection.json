@@ -1,0 +1,167 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "name": "XDS GHC Verification (Local)",
+    "description": "Run 'Login' first — it auto-saves apiKey and the JWT into the environment so every other request just works.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.apiKey) { pm.environment.set('api_key', body.apiKey); }",
+                  "if (body.token) { pm.environment.set('bearer_token', body.token); }",
+                  "pm.test('Login succeeded', () => pm.response.code === 200);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Selfie Verification",
+      "item": [
+        {
+          "name": "KYC Face Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pinNumber\": \"GHA-123456789-0\",\n  \"image\": \"<base64-png-here>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/selfie/verification/kyc/face",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "selfie", "verification", "kyc", "face"]
+            }
+          }
+        },
+        {
+          "name": "YES_NO Face Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pinNumber\": \"GHA-123456789-0\",\n  \"image\": \"<base64-png-here>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/selfie/verification/yes_no/face",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "selfie", "verification", "yes_no", "face"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Generic Proxy",
+      "item": [
+        {
+          "name": "GET passthrough example",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-API-Key", "value": "{{api_key}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/proxy/ping",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "proxy", "ping"]
+            }
+          }
+        },
+        {
+          "name": "POST passthrough example",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"example\": \"value\"\n}" },
+            "url": {
+              "raw": "{{base_url}}/api/v1/proxy/example-path",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "proxy", "example-path"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Console (JWT)",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bearer_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/users", "host": ["{{base_url}}"], "path": ["api", "v1", "users"] }
+          }
+        },
+        {
+          "name": "List Subscribers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bearer_token}}" }],
+            "url": { "raw": "{{base_url}}/api/v1/subscribers", "host": ["{{base_url}}"], "path": ["api", "v1", "subscribers"] }
+          }
+        },
+        {
+          "name": "List Transactions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bearer_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transactions?page=1&pageSize=25",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "transactions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "25" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
