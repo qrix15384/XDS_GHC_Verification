@@ -1,12 +1,16 @@
 {
   "info": {
+    "_postman_id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
     "name": "XDS GHC Verification API",
+    "description": "Run 'Login' first — it auto-saves apiKey and the JWT into collection variables so every other request just works.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://192.168.1.2:8088/xdsghc" },
-    { "key": "apiKey", "value": "change-me-service-key" },
-    { "key": "jwtToken", "value": "" }
+    { "key": "baseUrl", "value": "http://localhost:5068" },
+    { "key": "username", "value": "your-username" },
+    { "key": "password", "value": "change-me", "type": "secret" },
+    { "key": "apiKey", "value": "change-me-service-key", "type": "secret" },
+    { "key": "jwtToken", "value": "", "type": "secret" }
   ],
   "item": [
     {
@@ -30,7 +34,9 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
+                  "pm.test('Login succeeded', () => pm.response.code === 200);",
                   "if (pm.response.code === 200) {",
                   "    const body = pm.response.json();",
                   "    pm.collectionVariables.set('jwtToken', body.token);",
@@ -46,7 +52,7 @@
             "url": "{{baseUrl}}/api/v1/auth/login",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"change-me\"\n}"
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
             }
           }
         }
@@ -91,10 +97,23 @@
       "name": "Proxy (catch-all passthrough)",
       "item": [
         {
-          "name": "Forward request",
+          "name": "GET passthrough example",
           "request": {
             "method": "GET",
             "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }],
+            "url": "{{baseUrl}}/api/v1/proxy/<upstream-sub-path>",
+            "description": "Accepts GET/POST/PUT/PATCH/DELETE. Whatever follows /api/v1/proxy/ is forwarded to the configured Upstream:BaseUrl as-is."
+          }
+        },
+        {
+          "name": "POST passthrough example",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"example\": \"value\"\n}" },
             "url": "{{baseUrl}}/api/v1/proxy/<upstream-sub-path>",
             "description": "Accepts GET/POST/PUT/PATCH/DELETE. Whatever follows /api/v1/proxy/ is forwarded to the configured Upstream:BaseUrl as-is."
           }
