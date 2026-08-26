@@ -24,8 +24,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         ProxyUsers = new FakeProxyUserService(Subscribers);
     }
 
-    /// <summary>Set per-test to control what the "upstream API" returns.</summary>
+    /// <summary>Set per-test to control what the "upstream API" (NIA) returns.</summary>
     public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> UpstreamHandler { get; set; } =
+        (_, _) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
+        });
+
+    /// <summary>Set per-test to control what the credit API (login/getconsumermatch/GetConsumerFullCreditReport) returns.</summary>
+    public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> CreditApiHandler { get; set; } =
         (_, _) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
         {
             Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json"),
@@ -59,6 +66,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 ["Jwt:Issuer"] = "XDS_GHC_Verification.Tests",
                 ["Jwt:Audience"] = "XDS_GHC_Verification.Tests",
                 ["Jwt:ExpiryMinutes"] = "480",
+                ["CreditApi:BaseUrl"] = "https://credit-api.test/",
+                ["CreditApi:Username"] = "test-credit-user",
+                ["CreditApi:Password"] = "test-credit-password",
             });
         });
 
@@ -78,6 +88,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddHttpClient<UpstreamClient>()
                 .ConfigurePrimaryHttpMessageHandler(() => new FakeHttpMessageHandler((req, ct) => UpstreamHandler(req, ct)));
+
+            services.AddHttpClient<ICreditApiClient, CreditApiClient>()
+                .ConfigurePrimaryHttpMessageHandler(() => new FakeHttpMessageHandler((req, ct) => CreditApiHandler(req, ct)));
         });
     }
 }

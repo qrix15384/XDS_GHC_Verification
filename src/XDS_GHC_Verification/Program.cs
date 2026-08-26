@@ -17,9 +17,11 @@ builder.Services.Configure<UpstreamOptions>(builder.Configuration.GetSection(Ups
 builder.Services.Configure<SelfieOptions>(builder.Configuration.GetSection(SelfieOptions.SectionName));
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(CorsOptions.SectionName));
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<CreditApiOptions>(builder.Configuration.GetSection(CreditApiOptions.SectionName));
 
 // ─── Services ─────────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient<UpstreamClient>();
+builder.Services.AddHttpClient<ICreditApiClient, CreditApiClient>();
 builder.Services.AddScoped<SelfieVerificationService>();
 builder.Services.AddSingleton<IAuditLogService, AuditLogService>();
 builder.Services.AddSingleton<IProxyUserService, ProxyUserService>();

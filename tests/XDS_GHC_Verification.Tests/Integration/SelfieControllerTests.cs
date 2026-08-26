@@ -55,12 +55,14 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
     }
 
     [Fact]
-    public async Task KycFace_UpstreamFindsMatch_ReturnsUpstreamBodyAndLogsFound()
+    public async Task KycFace_UpstreamFindsMatch_ReturnsMaskedBodyAndLogsFound()
     {
         factory.AuditLog.Entries.Clear();
         factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent("""{"code":"00","data":{"person":{"name":"Kwame"}}}""", Encoding.UTF8, "application/json"),
+            Content = new StringContent(
+                """{"code":"00","success":true,"msg":"Verified","data":{"person":{"nationalId":"GHA-123456789-0"}}}""",
+                Encoding.UTF8, "application/json"),
         });
 
         var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
@@ -71,11 +73,114 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("00", body.RootElement.GetProperty("code").GetString());
+        Assert.Equal("00", body.RootElement.GetProperty("N_StatusCode").GetString());
+        Assert.Equal("GHA-123456789-0", body.RootElement.GetProperty("data").GetProperty("person").GetProperty("IDNo").GetString());
+        Assert.False(body.RootElement.TryGetProperty("code", out _)); // raw NIA field name must not survive masking
 
         var entry = Assert.Single(factory.AuditLog.Entries);
         Assert.Equal("Y", entry.DetailsFound);
         Assert.Equal("GHA-123456789-0", entry.PinNumber);
+    }
+
+    [Fact]
+    public async Task KycFace_SuccessWithBirthDate_RunsCreditLookupAndEmbedsRealAddressHistory()
+    {
+        factory.AuditLog.Entries.Clear();
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"code":"00","success":true,"data":{"person":{"nationalId":"GHA-717322166-9","birthDate":"2000-04-25"}}}""",
+                Encoding.UTF8, "application/json"),
+        });
+        factory.CreditApiHandler = (req, _) =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            var body = path.Contains("login", StringComparison.OrdinalIgnoreCase)
+                ? """{"dataTicket":"test-ticket","message":"sucess","statusCode":200}"""
+                : path.Contains("getconsumermatch", StringComparison.OrdinalIgnoreCase)
+                    ? """[{"response":{"message":"success","statusCode":200},"matchingEngineID":131510624,"enquiryID":78820369,"consumerID":4902753}]"""
+                    : """{"addressHistory":[{"upDateDate":"19/06/2023","upDateOnDate":"19/06/2023","address1":"ATIMATIM","address2":"","address3":"","address4":"","addressTypeInd":"Residential"}]}""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            });
+        };
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-717322166-9",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body2 = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var history = body2.RootElement.GetProperty("data").GetProperty("person").GetProperty("X_addressHistory");
+        Assert.Equal("ATIMATIM", history[0].GetProperty("X_address1").GetString());
+        Assert.Equal("Residential", history[0].GetProperty("X_addressTypeInd").GetString());
+    }
+
+    [Fact]
+    public async Task KycFace_SuccessWithBirthDate_CreditNoMatch_EmbedsNullPlaceholder()
+    {
+        factory.AuditLog.Entries.Clear();
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"code":"00","success":true,"data":{"person":{"nationalId":"GHA-000000000-0","birthDate":"1984-03-15"}}}""",
+                Encoding.UTF8, "application/json"),
+        });
+        factory.CreditApiHandler = (req, _) =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            var body = path.Contains("login", StringComparison.OrdinalIgnoreCase)
+                ? """{"dataTicket":"test-ticket","message":"sucess","statusCode":200}"""
+                : """[{"response":{"message":"No records found! Thank You!","statusCode":200},"matchingEngineID":null,"enquiryID":null,"consumerID":null}]""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            });
+        };
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-000000000-0",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body3 = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var history = body3.RootElement.GetProperty("data").GetProperty("person").GetProperty("X_addressHistory");
+        Assert.Equal(1, history.GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, history[0].GetProperty("X_address1").ValueKind);
+    }
+
+    [Fact]
+    public async Task KycFace_SuccessWithoutBirthDate_SkipsCreditLookupEntirely()
+    {
+        var creditApiCalled = false;
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"code":"00","success":true,"data":{"person":{"nationalId":"GHA-123456789-0"}}}""",
+                Encoding.UTF8, "application/json"),
+        });
+        factory.CreditApiHandler = (_, _) =>
+        {
+            creditApiCalled = true;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}", Encoding.UTF8, "application/json"),
+            });
+        };
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-123456789-0",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(creditApiCalled, "no birthDate in the NIA response means there's nothing to key the credit search on");
     }
 
     [Fact]

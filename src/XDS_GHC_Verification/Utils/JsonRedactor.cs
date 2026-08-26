@@ -2,9 +2,14 @@ using System.Text.Json.Nodes;
 
 namespace XDS_GHC_Verification.Utils;
 
-/// <summary>Strips "image" fields from a JSON tree before it gets logged anywhere.</summary>
+/// <summary>Strips image/biometric-blob fields from a JSON tree before it gets logged anywhere.</summary>
 public static class JsonRedactor
 {
+    // "image" — the raw selfie photo callers submit. "N_PtotoData" — the masked
+    // KYC response's biometric face/signature blobs (see VerificationResponseMasker).
+    private static readonly HashSet<string> SensitiveKeys =
+        new(StringComparer.OrdinalIgnoreCase) { "image", "N_PtotoData" };
+
     public static JsonNode? Redact(JsonNode? node)
     {
         switch (node)
@@ -13,7 +18,7 @@ public static class JsonRedactor
                 var result = new JsonObject();
                 foreach (var (key, value) in obj)
                 {
-                    result[key] = string.Equals(key, "image", StringComparison.OrdinalIgnoreCase)
+                    result[key] = SensitiveKeys.Contains(key)
                         ? "<redacted>"
                         : Redact(value?.DeepClone());
                 }
