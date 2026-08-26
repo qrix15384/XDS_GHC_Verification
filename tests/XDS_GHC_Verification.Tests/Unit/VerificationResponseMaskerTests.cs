@@ -48,7 +48,6 @@ public class VerificationResponseMaskerTests
 
         Assert.Equal("a490450c307b437dacbf6b3ad8e890d9", masked["data"]!["Tranx_NID"]!.GetValue<string>());
         Assert.Equal("false", masked["data"]!["N_verified"]!.GetValue<string>());
-        Assert.Equal("XDS_NIA", masked["data"]!["N_userID"]!.GetValue<string>());
         Assert.Equal("BRANCHLESS", masked["data"]!["N_center"]!.GetValue<string>());
         Assert.False(masked["N_success"]!.GetValue<bool>());
         Assert.Equal("11", masked["N_StatusCode"]!.GetValue<string>());
@@ -106,5 +105,45 @@ public class VerificationResponseMaskerTests
 
         Assert.NotNull(masked);
         Assert.NotNull(masked["data"]);
+    }
+
+    [Fact]
+    public void MaskKycResponse_UserIdIsAlwaysSubstitutedNeverPassedThrough()
+    {
+        var masked = VerificationResponseMasker.MaskKycResponse(RealConfirmedNiaResponse, [AddressHistoryEntry.Empty]);
+
+        Assert.Equal("XDS_Ver", masked["data"]!["N_userID"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void MaskKycFailureResponse_PrefixesEveryKeyWithX()
+    {
+        var masked = VerificationResponseMasker.MaskKycFailureResponse(RealConfirmedNiaResponse);
+
+        Assert.NotNull(masked!["X_data"]);
+        Assert.Equal("a490450c307b437dacbf6b3ad8e890d9", masked["X_data"]!["X_transactionGuid"]!.GetValue<string>());
+        Assert.Equal("false", masked["X_data"]!["X_verified"]!.GetValue<string>());
+        Assert.Equal("BRANCHLESS", masked["X_data"]!["X_center"]!.GetValue<string>());
+        Assert.Equal("GHA-000000000-0", masked["X_data"]!["X_person"]!["X_nationalId"]!.GetValue<string>());
+        Assert.False(masked["X_success"]!.GetValue<bool>());
+        Assert.Equal("11", masked["X_code"]!.GetValue<string>());
+        // No N_ prefixes anywhere on the failure path — no credit lookup ever ran to justify the split.
+        Assert.False(masked.AsObject().ContainsKey("N_success"));
+    }
+
+    [Fact]
+    public void MaskKycFailureResponse_UserIdIsAlsoSubstituted()
+    {
+        var masked = VerificationResponseMasker.MaskKycFailureResponse(RealConfirmedNiaResponse);
+
+        Assert.Equal("XDS_Ver", masked!["X_data"]!["X_userID"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void MaskKycFailureResponse_NullInput_DoesNotThrow()
+    {
+        var masked = VerificationResponseMasker.MaskKycFailureResponse(null);
+
+        Assert.Null(masked);
     }
 }

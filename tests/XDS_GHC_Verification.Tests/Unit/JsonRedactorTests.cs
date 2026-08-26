@@ -66,4 +66,27 @@ public class JsonRedactorTests
     {
         Assert.Null(JsonRedactor.Redact(null));
     }
+
+    [Fact]
+    public void Redact_RawNiaPtotoData_IsRedacted()
+    {
+        // "ptotoData" is the raw NIA biometric blob key, before VerificationResponseMasker
+        // renames it to "N_PtotoData" — the raw form must be caught too, since
+        // NiaResponseLog now persists the unmasked response.
+        var node = JsonNode.Parse("""{"binaries":[{"type":"FACE","ptotoData":"base64-blob-data"}]}""")!;
+
+        var redacted = JsonRedactor.Redact(node);
+
+        Assert.Equal("<redacted>", redacted?["binaries"]?[0]?["ptotoData"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public void Redact_MaskedPtotoData_IsStillRedacted()
+    {
+        var node = JsonNode.Parse("""{"person":{"biometricFeed":{"face":{"N_PtotoData":"base64-blob-data"}}}}""")!;
+
+        var redacted = JsonRedactor.Redact(node);
+
+        Assert.Equal("<redacted>", redacted?["person"]?["biometricFeed"]?["face"]?["N_PtotoData"]?.GetValue<string>());
+    }
 }

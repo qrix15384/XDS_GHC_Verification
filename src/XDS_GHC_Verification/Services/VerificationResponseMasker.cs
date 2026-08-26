@@ -18,6 +18,14 @@ namespace XDS_GHC_Verification.Services;
 /// </summary>
 public static class VerificationResponseMasker
 {
+    /// <summary>
+    /// The client-facing stand-in for whatever userID value the real upstream
+    /// echoes back (e.g. "XDS_NIA") — that raw value names the vendor
+    /// directly, defeating the whole point of masking. Always substituted,
+    /// never passed through, on both the success and failure paths.
+    /// </summary>
+    private const string MaskedUserId = "XDS_Ver";
+
     public static JsonObject MaskKycResponse(JsonNode? niaResponse, List<AddressHistoryEntry> addressHistory)
     {
         var data = niaResponse?["data"];
@@ -30,7 +38,10 @@ public static class VerificationResponseMasker
         SetIfPresent(maskedData, "requestTimestamp", data?["requestTimestamp"]);
         SetIfPresent(maskedData, "responseTimestamp", data?["responseTimestamp"]);
         SetIfPresent(maskedData, "N_verified", data?["verified"]);
-        SetIfPresent(maskedData, "N_userID", data?["userID"]);
+        if (data?["userID"] is not null)
+        {
+            maskedData["N_userID"] = MaskedUserId;
+        }
         SetIfPresent(maskedData, "N_center", data?["center"]);
         // merchantName/merchantCode/source/modeOfOperation/badFingerPosition/isException/onWatchList
         // are deliberately dropped — vendor-internal fields, not part of the masked contract.
@@ -215,6 +226,42 @@ public static class VerificationResponseMasker
         if (value is not null)
         {
             target[key] = value.DeepClone();
+        }
+    }
+
+    /// <summary>
+    /// Masks a KYC failure response — unlike the success path, there's no
+    /// N_/X_ split to make (no credit lookup ever runs on a failure), so
+    /// every key is uniformly prefixed X_ instead of left as raw NIA field
+    /// names. userID gets the same MaskedUserId substitution as the success path.
+    /// </summary>
+    public static JsonNode? MaskKycFailureResponse(JsonNode? rawErrorDetail) => PrefixAllKeys(rawErrorDetail);
+
+    private static JsonNode? PrefixAllKeys(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                var result = new JsonObject();
+                foreach (var (key, value) in obj)
+                {
+                    var prefixedKey = "X_" + key;
+                    result[prefixedKey] = string.Equals(key, "userID", StringComparison.OrdinalIgnoreCase)
+                        ? MaskedUserId
+                        : PrefixAllKeys(value?.DeepClone());
+                }
+                return result;
+
+            case JsonArray arr:
+                var arrResult = new JsonArray();
+                foreach (var item in arr)
+                {
+                    arrResult.Add(PrefixAllKeys(item?.DeepClone()));
+                }
+                return arrResult;
+
+            default:
+                return node;
         }
     }
 }

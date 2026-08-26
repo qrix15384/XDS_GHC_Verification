@@ -83,6 +83,92 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
     }
 
     [Fact]
+    public async Task KycFace_UpstreamFindsMatch_LogsCorrelatedNiaAndProxyResponseRows()
+    {
+        factory.ResponseLog.NiaEntries.Clear();
+        factory.ResponseLog.ProxyEntries.Clear();
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """
+                {"code":"00","success":true,"msg":"Verified","data":{
+                    "requestTimestamp":"2026-08-22T09:54:18.250Z",
+                    "responseTimestamp":"2026-08-22T09:54:18.287Z",
+                    "person":{"nationalId":"GHA-123456789-0"}}}
+                """,
+                Encoding.UTF8, "application/json"),
+        });
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-123456789-0",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var niaEntry = Assert.Single(factory.ResponseLog.NiaEntries);
+        var proxyEntry = Assert.Single(factory.ResponseLog.ProxyEntries);
+
+        // Same call is correlated across both tables via RequestId.
+        Assert.Equal(niaEntry.RequestId, proxyEntry.RequestId);
+
+        // The NIA row carries the original, unmasked field names...
+        Assert.Equal(200, niaEntry.HttpStatusCode);
+        Assert.Equal("GHA-123456789-0", niaEntry.RawResponsePayload?["data"]?["person"]?["nationalId"]?.GetValue<string>());
+        Assert.False(niaEntry.RawResponsePayload?["N_StatusCode"] is not null); // never masked
+
+        // ...timestamped from NIA's own echoed clock, not our measured time.
+        Assert.Equal(DateTime.Parse("2026-08-22T09:54:18.250Z").ToUniversalTime(), niaEntry.CallAtUtc);
+        Assert.Equal(DateTime.Parse("2026-08-22T09:54:18.287Z").ToUniversalTime(), niaEntry.ResponseAtUtc);
+
+        // ...while the proxy row carries the masked shape actually sent to the client.
+        Assert.Equal(200, proxyEntry.HttpStatusCode);
+        Assert.Equal("GHA-123456789-0", proxyEntry.MaskedResponsePayload?["data"]?["person"]?["IDNo"]?.GetValue<string>());
+        Assert.True(proxyEntry.CallAtUtc <= proxyEntry.ResponseAtUtc);
+    }
+
+    [Fact]
+    public async Task KycFace_InvalidBase64Image_LogsProxyResponseOnlyNoNiaRow()
+    {
+        factory.ResponseLog.NiaEntries.Clear();
+        factory.ResponseLog.ProxyEntries.Clear();
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-123456789-0",
+            image = "not-valid-base64!!!",
+        });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Empty(factory.ResponseLog.NiaEntries); // NIA was never reached
+        var proxyEntry = Assert.Single(factory.ResponseLog.ProxyEntries);
+        Assert.Equal(422, proxyEntry.HttpStatusCode);
+        Assert.Equal("GHA-123456789-0", proxyEntry.PinNumber);
+    }
+
+    [Fact]
+    public async Task KycFace_UpstreamServerError_LogsBothNiaAndProxyResponseRowsWithMatchingStatus()
+    {
+        factory.ResponseLog.NiaEntries.Clear();
+        factory.ResponseLog.ProxyEntries.Clear();
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-123456789-0",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        var niaEntry = Assert.Single(factory.ResponseLog.NiaEntries);
+        var proxyEntry = Assert.Single(factory.ResponseLog.ProxyEntries);
+        Assert.Equal(niaEntry.RequestId, proxyEntry.RequestId);
+        Assert.Equal(502, niaEntry.HttpStatusCode);
+        Assert.Equal(502, proxyEntry.HttpStatusCode);
+    }
+
+    [Fact]
     public async Task KycFace_SuccessWithBirthDate_RunsCreditLookupAndEmbedsRealAddressHistory()
     {
         factory.AuditLog.Entries.Clear();
@@ -240,6 +326,31 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
     }
 
     [Fact]
+    public async Task YesNoFace_UpstreamSaysVerified_LogsCorrelatedNiaAndProxyResponseRows()
+    {
+        factory.ResponseLog.NiaEntries.Clear();
+        factory.ResponseLog.ProxyEntries.Clear();
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"code":"00","data":{"verified":"YES"}}""", Encoding.UTF8, "application/json"),
+        });
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/yes_no/face", new
+        {
+            pinNumber = "GHA-123456789-0",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var niaEntry = Assert.Single(factory.ResponseLog.NiaEntries);
+        var proxyEntry = Assert.Single(factory.ResponseLog.ProxyEntries);
+        Assert.Equal(niaEntry.RequestId, proxyEntry.RequestId);
+        // YES/NO is a plain passthrough — proxy sends back the same body NIA returned.
+        Assert.Equal("YES", proxyEntry.MaskedResponsePayload?["data"]?["verified"]?.GetValue<string>());
+        Assert.Equal("YES", niaEntry.RawResponsePayload?["data"]?["verified"]?.GetValue<string>());
+    }
+
+    [Fact]
     public async Task KycFace_UpstreamServerError_ReturnsBadGatewayAndLogsError()
     {
         factory.AuditLog.Entries.Clear();
@@ -255,6 +366,36 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
         var entry = Assert.Single(factory.AuditLog.Entries);
         Assert.Equal("N", entry.DetailsFound);
         Assert.NotNull(entry.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task KycFace_NiaRejectsWithStructuredError_ReturnsAllKeysXPrefixedAndUserIdMasked()
+    {
+        factory.AuditLog.Entries.Clear();
+        factory.UpstreamHandler = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(
+                """{"data":{"transactionGuid":"abc123","verified":"false","userID":"XDS_NIA","center":"BRANCHLESS","person":{"nationalId":"GHA-000000000-0"}},"success":false,"code":"11","msg":"Failed to detect face"}""",
+                Encoding.UTF8, "application/json"),
+        });
+
+        var response = await AuthorizedClient().PostAsJsonAsync("/api/v1/selfie/verification/kyc/face", new
+        {
+            pinNumber = "GHA-000000000-0",
+            image = Convert.ToBase64String("fake-png-bytes"u8.ToArray()),
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var detail = body.RootElement.GetProperty("detail");
+        Assert.Equal("abc123", detail.GetProperty("X_data").GetProperty("X_transactionGuid").GetString());
+        Assert.Equal("XDS_Ver", detail.GetProperty("X_data").GetProperty("X_userID").GetString());
+        Assert.Equal("Failed to detect face", detail.GetProperty("X_msg").GetString());
+        Assert.False(detail.TryGetProperty("N_success", out _));
+        Assert.False(detail.GetProperty("X_data").TryGetProperty("userID", out _)); // raw key must not survive
+
+        var entry = Assert.Single(factory.AuditLog.Entries);
+        Assert.Contains("X_transactionGuid", entry.ResponsePayload?.ToJsonString() ?? "");
     }
 
     [Fact]

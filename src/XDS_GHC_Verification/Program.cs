@@ -24,6 +24,7 @@ builder.Services.AddHttpClient<UpstreamClient>();
 builder.Services.AddHttpClient<ICreditApiClient, CreditApiClient>();
 builder.Services.AddScoped<SelfieVerificationService>();
 builder.Services.AddSingleton<IAuditLogService, AuditLogService>();
+builder.Services.AddSingleton<IVerificationResponseLogService, VerificationResponseLogService>();
 builder.Services.AddSingleton<IProxyUserService, ProxyUserService>();
 builder.Services.AddSingleton<ISubscriberService, SubscriberService>();
 builder.Services.AddSingleton<ITransactionQueryService, TransactionQueryService>();

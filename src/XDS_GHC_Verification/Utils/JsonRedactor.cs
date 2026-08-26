@@ -5,10 +5,11 @@ namespace XDS_GHC_Verification.Utils;
 /// <summary>Strips image/biometric-blob fields from a JSON tree before it gets logged anywhere.</summary>
 public static class JsonRedactor
 {
-    // "image" — the raw selfie photo callers submit. "N_PtotoData" — the masked
-    // KYC response's biometric face/signature blobs (see VerificationResponseMasker).
+    // "image" — the raw selfie photo callers submit. "ptotoData" — the raw NIA
+    // biometric face/signature blob before masking. "N_PtotoData" — that same
+    // blob's key name after masking (see VerificationResponseMasker).
     private static readonly HashSet<string> SensitiveKeys =
-        new(StringComparer.OrdinalIgnoreCase) { "image", "N_PtotoData" };
+        new(StringComparer.OrdinalIgnoreCase) { "image", "ptotoData", "N_PtotoData" };
 
     public static JsonNode? Redact(JsonNode? node)
     {

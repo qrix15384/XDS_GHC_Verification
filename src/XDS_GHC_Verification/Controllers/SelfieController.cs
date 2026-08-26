@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -20,6 +22,12 @@ namespace XDS_GHC_Verification.Controllers;
 /// a masked, restructured response (see VerificationResponseMasker) instead
 /// of a raw passthrough. YES/NO stays a plain passthrough — its NIA response
 /// carries no birth date, so there's nothing to key the credit lookup on.
+///
+/// Every call is logged twice, correlated by a per-request RequestId: once to
+/// dbo.NiaResponseLog (the original, unmasked NIA response — only when NIA was
+/// actually reached) and once to dbo.ProxyResponseLog (whatever this proxy
+/// actually sent back to the client, for every response including validation
+/// failures that never reach NIA). See sql/005_add_verification_response_logs.sql.
 /// </summary>
 [ApiController]
 [Route("api/v1/selfie")]
@@ -28,6 +36,7 @@ public class SelfieController(
     SelfieVerificationService selfieService,
     ICreditApiClient creditApi,
     IAuditLogService auditLog,
+    IVerificationResponseLogService responseLog,
     IOptions<ServiceAuthOptions> authOptions) : ControllerBase
 {
     private const string KycEndpoint = "/api/v1/selfie/verification/kyc/face";
@@ -37,6 +46,8 @@ public class SelfieController(
     public async Task<IActionResult> KycFace([FromBody] SelfieVerificationRequest payload, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
+        var requestId = Guid.NewGuid();
+        var proxyCallAtUtc = DateTime.UtcNow;
         var username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername);
         var (subscriberId, subscriberName) = HttpContext.ResolveAuditSubscriber();
 
@@ -47,13 +58,18 @@ public class SelfieController(
         }
         catch (ValidationException ex)
         {
+            await LogProxyAsync(requestId, KycEndpoint, payload.PinNumber, proxyCallAtUtc, DateTime.UtcNow,
+                StatusCodes.Status422UnprocessableEntity, JsonSerializer.SerializeToNode(new { detail = ex.Message }),
+                username, subscriberId, subscriberName, ct);
             return UnprocessableEntity(new { detail = ex.Message });
         }
 
+        var niaCallAtUtc = DateTime.UtcNow;
         try
         {
             var (statusCode, body) = await selfieService.VerifyKycFaceAsync(
                 payload.PinNumber, cleanedImage, payload.DataType, payload.UserID, ct);
+            var niaResponseAtUtc = DateTime.UtcNow;
             var detailsFound = IsKycDetailsFound(body);
 
             var addressHistory = detailsFound == "Y"
@@ -61,6 +77,11 @@ public class SelfieController(
                 : [AddressHistoryEntry.Empty];
 
             var maskedResponse = VerificationResponseMasker.MaskKycResponse(body, addressHistory);
+
+            await LogNiaAsync(requestId, KycEndpoint, payload.PinNumber, niaCallAtUtc, niaResponseAtUtc,
+                statusCode, body, null, username, subscriberId, subscriberName, ct);
+            await LogProxyAsync(requestId, KycEndpoint, payload.PinNumber, proxyCallAtUtc, DateTime.UtcNow,
+                statusCode, maskedResponse, username, subscriberId, subscriberName, ct);
 
             await auditLog.LogTransactionAsync(new AuditLogEntry
             {
@@ -80,14 +101,30 @@ public class SelfieController(
         }
         catch (UpstreamServiceException ex)
         {
+            var niaResponseAtUtc = DateTime.UtcNow;
+
+            // Failures have no N_/X_ split to make (no credit lookup ever runs
+            // here) — every key is uniformly X_-prefixed instead of left as raw
+            // NIA field names. The client and the audit log see the same masked shape.
+            var maskedDetail = ex.Detail is JsonNode detailNode
+                ? VerificationResponseMasker.MaskKycFailureResponse(detailNode)
+                : ex.Detail;
+
+            await LogNiaAsync(requestId, KycEndpoint, payload.PinNumber, niaCallAtUtc, niaResponseAtUtc,
+                ex.StatusCode, ex.Detail as JsonNode, ex.Detail is JsonNode ? null : ex.Detail?.ToString(),
+                username, subscriberId, subscriberName, ct);
+            await LogProxyAsync(requestId, KycEndpoint, payload.PinNumber, proxyCallAtUtc, niaResponseAtUtc,
+                ex.StatusCode, JsonSerializer.SerializeToNode(new { detail = maskedDetail }),
+                username, subscriberId, subscriberName, ct);
+
             await auditLog.LogTransactionAsync(new AuditLogEntry
             {
                 EndpointPath = KycEndpoint,
                 HttpMethod = "POST",
                 Username = username,
                 HttpStatusCode = ex.StatusCode,
-                ResponsePayload = ex.Detail as JsonNode,
-                RawResponsePayload = ex.Detail is JsonNode ? null : ex.Detail?.ToString(),
+                ResponsePayload = maskedDetail as JsonNode,
+                RawResponsePayload = maskedDetail is JsonNode ? null : maskedDetail?.ToString(),
                 DetailsFound = "N",
                 ErrorMessage = ex.Message,
                 PinNumber = payload.PinNumber,
@@ -96,7 +133,7 @@ public class SelfieController(
                 SubscriberName = subscriberName,
             }, ct);
 
-            return StatusCode(ex.StatusCode, new { detail = ex.Detail });
+            return StatusCode(ex.StatusCode, new { detail = maskedDetail });
         }
     }
 
@@ -125,6 +162,8 @@ public class SelfieController(
     public async Task<IActionResult> YesNoFace([FromBody] SelfieVerificationRequest payload, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
+        var requestId = Guid.NewGuid();
+        var proxyCallAtUtc = DateTime.UtcNow;
         var username = HttpContext.ResolveAuditUsername(authOptions.Value.AuthUsername);
         var (subscriberId, subscriberName) = HttpContext.ResolveAuditSubscriber();
 
@@ -135,13 +174,23 @@ public class SelfieController(
         }
         catch (ValidationException ex)
         {
+            await LogProxyAsync(requestId, YesNoEndpoint, payload.PinNumber, proxyCallAtUtc, DateTime.UtcNow,
+                StatusCodes.Status422UnprocessableEntity, JsonSerializer.SerializeToNode(new { detail = ex.Message }),
+                username, subscriberId, subscriberName, ct);
             return UnprocessableEntity(new { detail = ex.Message });
         }
 
+        var niaCallAtUtc = DateTime.UtcNow;
         try
         {
             var (statusCode, body) = await selfieService.VerifyYesNoFaceAsync(
                 payload.PinNumber, cleanedImage, payload.DataType, payload.UserID, ct);
+            var niaResponseAtUtc = DateTime.UtcNow;
+
+            await LogNiaAsync(requestId, YesNoEndpoint, payload.PinNumber, niaCallAtUtc, niaResponseAtUtc,
+                statusCode, body, null, username, subscriberId, subscriberName, ct);
+            await LogProxyAsync(requestId, YesNoEndpoint, payload.PinNumber, proxyCallAtUtc, DateTime.UtcNow,
+                statusCode, body, username, subscriberId, subscriberName, ct);
 
             await auditLog.LogTransactionAsync(new AuditLogEntry
             {
@@ -161,6 +210,15 @@ public class SelfieController(
         }
         catch (UpstreamServiceException ex)
         {
+            var niaResponseAtUtc = DateTime.UtcNow;
+
+            await LogNiaAsync(requestId, YesNoEndpoint, payload.PinNumber, niaCallAtUtc, niaResponseAtUtc,
+                ex.StatusCode, ex.Detail as JsonNode, ex.Detail is JsonNode ? null : ex.Detail?.ToString(),
+                username, subscriberId, subscriberName, ct);
+            await LogProxyAsync(requestId, YesNoEndpoint, payload.PinNumber, proxyCallAtUtc, niaResponseAtUtc,
+                ex.StatusCode, JsonSerializer.SerializeToNode(new { detail = ex.Detail }),
+                username, subscriberId, subscriberName, ct);
+
             await auditLog.LogTransactionAsync(new AuditLogEntry
             {
                 EndpointPath = YesNoEndpoint,
@@ -180,6 +238,63 @@ public class SelfieController(
             return StatusCode(ex.StatusCode, new { detail = ex.Detail });
         }
     }
+
+    /// <summary>
+    /// Logs the NIA half of the pair. CallAtUtc/ResponseAtUtc prefer NIA's own
+    /// echoed requestTimestamp/responseTimestamp (its own clock, exact
+    /// processing moment) and fall back to the times measured locally around
+    /// the call when NIA didn't echo one back (e.g. a timeout or a malformed body).
+    /// </summary>
+    private Task LogNiaAsync(
+        Guid requestId, string endpoint, string? pinNumber,
+        DateTime measuredCallAtUtc, DateTime measuredResponseAtUtc, int statusCode,
+        JsonNode? rawPayload, string? rawText,
+        string username, int? subscriberId, string? subscriberName, CancellationToken ct) =>
+        responseLog.LogNiaResponseAsync(new NiaResponseLogEntry
+        {
+            RequestId = requestId,
+            EndpointPath = endpoint,
+            PinNumber = pinNumber,
+            CallAtUtc = ParseNiaTimestamp(rawPayload, "requestTimestamp") ?? measuredCallAtUtc,
+            ResponseAtUtc = ParseNiaTimestamp(rawPayload, "responseTimestamp") ?? measuredResponseAtUtc,
+            HttpStatusCode = statusCode,
+            RawResponsePayload = rawPayload,
+            RawResponseText = rawText,
+            Username = username,
+            SubscriberId = subscriberId,
+            SubscriberName = subscriberName,
+        }, ct);
+
+    /// <summary>
+    /// Logs the proxy half of the pair — CallAtUtc/ResponseAtUtc are always
+    /// measured locally, since this is about our own boundary with the client,
+    /// not NIA's.
+    /// </summary>
+    private Task LogProxyAsync(
+        Guid requestId, string endpoint, string? pinNumber,
+        DateTime callAtUtc, DateTime responseAtUtc, int statusCode, JsonNode? maskedPayload,
+        string username, int? subscriberId, string? subscriberName, CancellationToken ct) =>
+        responseLog.LogProxyResponseAsync(new ProxyResponseLogEntry
+        {
+            RequestId = requestId,
+            EndpointPath = endpoint,
+            PinNumber = pinNumber,
+            CallAtUtc = callAtUtc,
+            ResponseAtUtc = responseAtUtc,
+            HttpStatusCode = statusCode,
+            MaskedResponsePayload = maskedPayload,
+            Username = username,
+            SubscriberId = subscriberId,
+            SubscriberName = subscriberName,
+        }, ct);
+
+    private static DateTime? ParseNiaTimestamp(JsonNode? body, string key) =>
+        body?["data"]?[key] is JsonValue value
+        && value.TryGetValue<string>(out var raw)
+        && DateTime.TryParse(raw, CultureInfo.InvariantCulture,
+            DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
 
     private static string IsKycDetailsFound(JsonNode? body)
     {

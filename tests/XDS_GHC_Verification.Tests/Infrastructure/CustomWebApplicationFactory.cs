@@ -15,6 +15,7 @@ namespace XDS_GHC_Verification.Tests.Infrastructure;
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
     public FakeAuditLogService AuditLog { get; } = new();
+    public FakeVerificationResponseLogService ResponseLog { get; } = new();
     public FakeSubscriberService Subscribers { get; } = new();
     public FakeProxyUserService ProxyUsers { get; }
     public FakeTransactionQueryService Transactions { get; } = new();
@@ -76,6 +77,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IAuditLogService>();
             services.AddSingleton<IAuditLogService>(AuditLog);
+
+            services.RemoveAll<IVerificationResponseLogService>();
+            services.AddSingleton<IVerificationResponseLogService>(ResponseLog);
 
             services.RemoveAll<IProxyUserService>();
             services.AddSingleton<IProxyUserService>(ProxyUsers);
