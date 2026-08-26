@@ -146,4 +146,85 @@ public class VerificationResponseMaskerTests
 
         Assert.Null(masked);
     }
+
+    // Shape transcribed from a real, live NIA *successful* KYC match captured
+    // during integration testing (values replaced with synthetic data) — this
+    // is what caught cardId/cardID, phone network/provider, and the biometric
+    // dataType+data/ptotoType+ptotoData key mismatches, none of which had ever
+    // been exercised against a real successful match before.
+    private static JsonNode RealConfirmedSuccessfulMatchResponse => JsonNode.Parse("""
+        {
+          "data": {
+            "person": {
+              "nationalId": "GHA-999999999-9",
+              "cardId": "GH0000000",
+              "cardValidFrom": "2019-04-10",
+              "cardValidTo": "2029-04-09",
+              "surname": "DOE",
+              "forenames": "JANE",
+              "nationality": "Ghana",
+              "birthDate": "1990-01-01",
+              "gender": "FEMALE",
+              "birthCountry": "Ghana",
+              "birthDistrict": "SAMPLE DISTRICT",
+              "birthRegion": "SAMPLE REGION",
+              "birthTown": "SAMPLE TOWN",
+              "contact": {
+                "email": "jane.doe@example.com",
+                "phoneNumbers": [
+                  { "type": "MOBILE", "phoneNumber": "0200000000", "network": "MTN" }
+                ]
+              },
+              "occupations": [ { "name": "Software Developer" } ],
+              "biometricFeed": {
+                "face": { "dataType": "PNG", "data": "face-base64-placeholder" }
+              },
+              "binaries": [
+                { "type": "SIGNATURE", "dataType": "JPEG", "data": "signature-base64-placeholder" }
+              ]
+            }
+          },
+          "success": true,
+          "code": "00",
+          "msg": "Verified Successfully"
+        }
+        """)!;
+
+    [Fact]
+    public void MaskKycResponse_MapsCardIdFromRawLowercaseKey()
+    {
+        var masked = VerificationResponseMasker.MaskKycResponse(RealConfirmedSuccessfulMatchResponse, [AddressHistoryEntry.Empty]);
+
+        Assert.Equal("GH0000000", masked["data"]!["person"]!["N_cardID"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void MaskKycResponse_MapsPhoneProviderFromRawNetworkKey()
+    {
+        var masked = VerificationResponseMasker.MaskKycResponse(RealConfirmedSuccessfulMatchResponse, [AddressHistoryEntry.Empty]);
+
+        var phone = masked["data"]!["person"]!["contact"]!["phoneNumbers"]![0]!;
+        Assert.Equal("MTN", phone["N_Provider"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void MaskKycResponse_MapsFacePhotoFromRawDataTypeAndDataKeys()
+    {
+        var masked = VerificationResponseMasker.MaskKycResponse(RealConfirmedSuccessfulMatchResponse, [AddressHistoryEntry.Empty]);
+
+        var face = masked["data"]!["person"]!["biometricFeed"]!["face"]!;
+        Assert.Equal("PNG", face["N_PtotoType"]!.GetValue<string>());
+        Assert.Equal("face-base64-placeholder", face["N_PtotoData"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void MaskKycResponse_MapsBinaryPhotoFromRawDataTypeAndDataKeys()
+    {
+        var masked = VerificationResponseMasker.MaskKycResponse(RealConfirmedSuccessfulMatchResponse, [AddressHistoryEntry.Empty]);
+
+        var signature = masked["data"]!["person"]!["binaries"]![0]!;
+        Assert.Equal("SIGNATURE", signature["N_type"]!.GetValue<string>());
+        Assert.Equal("JPEG", signature["N_PtotoType"]!.GetValue<string>());
+        Assert.Equal("signature-base64-placeholder", signature["N_PtotoData"]!.GetValue<string>());
+    }
 }

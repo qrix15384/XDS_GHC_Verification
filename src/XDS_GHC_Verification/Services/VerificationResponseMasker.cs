@@ -8,13 +8,14 @@ namespace XDS_GHC_Verification.Services;
 /// (N_-prefixed identity fields, X_-prefixed address history from the
 /// credit API) — replacing the raw passthrough previously returned to callers.
 ///
-/// Field-name mapping is a mix of CONFIRMED (verified against real, live NIA
-/// responses seen during integration testing — see UpstreamClient/SelfieController
-/// history) and INFERRED (this app has not yet observed a real *successful*
-/// KYC match with full person details; those field names follow the same
-/// "strip the N_ prefix to get the raw name" pattern every CONFIRMED field
-/// uses, but are not independently verified). INFERRED sections are marked
-/// below — revisit them against a real successful match when one is available.
+/// Field-name mapping is CONFIRMED against real, live NIA responses seen
+/// during integration testing, both on the failure path and — as of a real
+/// successful KYC match — the full person/biometricFeed/binaries shape too
+/// (see UpstreamClient/SelfieController history). Earlier revisions of this
+/// file guessed some of these names before a successful match was available
+/// (cardID/cardId, phone provider/network, and the ptotoType-ptotoData/
+/// dataType-data biometric blob keys all differed from the guess); those
+/// have since been corrected against the real payload.
 /// </summary>
 public static class VerificationResponseMasker
 {
@@ -61,8 +62,8 @@ public static class VerificationResponseMasker
         // CONFIRMED — the only person field seen on a real (failure-path) live response.
         SetIfPresent(masked, "IDNo", person?["nationalId"]);
 
-        // INFERRED — not yet observed on a real successful match. Strip-N_ pattern.
-        SetIfPresent(masked, "N_cardID", person?["cardID"]);
+        // CONFIRMED — real live successful-match response.
+        SetIfPresent(masked, "N_cardID", person?["cardId"]);
         SetIfPresent(masked, "N_cardValidFrom", person?["cardValidFrom"]);
         SetIfPresent(masked, "N_cardValidTo", person?["cardValidTo"]);
         SetIfPresent(masked, "N_surname", person?["surname"]);
@@ -151,7 +152,7 @@ public static class VerificationResponseMasker
                 var maskedPhone = new JsonObject();
                 SetIfPresent(maskedPhone, "N_type", phone["type"]);
                 SetIfPresent(maskedPhone, "N_phoneNumber", phone["phoneNumber"]);
-                SetIfPresent(maskedPhone, "N_Provider", phone["provider"]);
+                SetIfPresent(maskedPhone, "N_Provider", phone["network"]);
                 maskedPhones.Add(maskedPhone);
             }
             masked["phoneNumbers"] = maskedPhones;
@@ -179,8 +180,9 @@ public static class VerificationResponseMasker
         if (biometricFeed["face"] is { } face)
         {
             var maskedFace = new JsonObject();
-            SetIfPresent(maskedFace, "N_PtotoType", face["ptotoType"]);
-            SetIfPresent(maskedFace, "N_PtotoData", face["ptotoData"]);
+            // CONFIRMED — real live response: {"face":{"dataType":"PNG","data":"<base64>"}}.
+            SetIfPresent(maskedFace, "N_PtotoType", face["dataType"]);
+            SetIfPresent(maskedFace, "N_PtotoData", face["data"]);
             masked["face"] = maskedFace;
         }
         return masked;
@@ -193,9 +195,10 @@ public static class VerificationResponseMasker
         {
             if (binary is null) continue;
             var masked = new JsonObject();
+            // CONFIRMED — real live response: {"type":"SIGNATURE","dataType":"JPEG","data":"<base64>"}.
             SetIfPresent(masked, "N_type", binary["type"]);
-            SetIfPresent(masked, "N_PtotoType", binary["ptotoType"]);
-            SetIfPresent(masked, "N_PtotoData", binary["ptotoData"]);
+            SetIfPresent(masked, "N_PtotoType", binary["dataType"]);
+            SetIfPresent(masked, "N_PtotoData", binary["data"]);
             result.Add(masked);
         }
         return result;

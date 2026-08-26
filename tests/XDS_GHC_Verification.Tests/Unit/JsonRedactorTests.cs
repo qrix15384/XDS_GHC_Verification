@@ -68,16 +68,35 @@ public class JsonRedactorTests
     }
 
     [Fact]
-    public void Redact_RawNiaPtotoData_IsRedacted()
+    public void Redact_RawNiaBiometricBlob_IsRedacted()
     {
-        // "ptotoData" is the raw NIA biometric blob key, before VerificationResponseMasker
-        // renames it to "N_PtotoData" — the raw form must be caught too, since
-        // NiaResponseLog now persists the unmasked response.
-        var node = JsonNode.Parse("""{"binaries":[{"type":"FACE","ptotoData":"base64-blob-data"}]}""")!;
+        // The raw NIA biometric blob is keyed plainly as "data", alongside a sibling
+        // "dataType" — the real shape confirmed on a live successful KYC match, for
+        // both person.biometricFeed.face and each person.binaries[] entry. The raw
+        // form must be caught too, since NiaResponseLog now persists the unmasked response.
+        var node = JsonNode.Parse(
+            """{"binaries":[{"type":"SIGNATURE","dataType":"JPEG","data":"base64-blob-data"}]}""")!;
 
         var redacted = JsonRedactor.Redact(node);
 
-        Assert.Equal("<redacted>", redacted?["binaries"]?[0]?["ptotoData"]?.GetValue<string>());
+        Assert.Equal("<redacted>", redacted?["binaries"]?[0]?["data"]?.GetValue<string>());
+        Assert.Equal("JPEG", redacted?["binaries"]?[0]?["dataType"]?.GetValue<string>());
+        Assert.Equal("SIGNATURE", redacted?["binaries"]?[0]?["type"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public void Redact_TopLevelDataEnvelope_IsNotRedacted()
+    {
+        // The top-level "data" key (the whole response envelope) has no sibling
+        // "dataType" — only a "data" contextually paired with "dataType" (the raw
+        // biometric blob shape) should be redacted, not this generic container.
+        var node = JsonNode.Parse("""{"data":{"person":{"nationalId":"GHA-123456789-0"}}}""")!;
+
+        var redacted = JsonRedactor.Redact(node);
+
+        Assert.Equal(
+            "GHA-123456789-0",
+            redacted?["data"]?["person"]?["nationalId"]?.GetValue<string>());
     }
 
     [Fact]
