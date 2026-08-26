@@ -1,8 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 
-const CAPTURE_WIDTH = 640;
-const CAPTURE_HEIGHT = 480;
+// Fallback only, for the unlikely case the video's native dimensions aren't
+// available yet when capture() runs — the vendor's documented floor.
+const FALLBACK_CAPTURE_WIDTH = 640;
+const FALLBACK_CAPTURE_HEIGHT = 480;
 const MAX_IMAGE_BYTES = 1 * 1024 * 1024; // matches SelfieVerificationRequest.MaxImageBytes on the backend
+
+// PNG is lossless (no quality/compression knob like JPEG, and NIA requires
+// PNG specifically), so the only lever for file size is resolution. Start at
+// the camera's native resolution and only shrink if the encoded PNG is
+// actually too big, stopping well above NIA's 500x500px face-region minimum
+// so a busy/detailed shot can never shrink back into the original bug.
+const MIN_CAPTURE_DIMENSION = 600;
+const DOWNSCALE_FACTOR = 0.85;
+const MAX_CAPTURE_ATTEMPTS = 6;
+
+function encodeCanvasToPng(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
 
 interface CameraCaptureProps {
   /** Called with the raw (no data: prefix) Base64 PNG once a capture passes the size check. */
@@ -31,9 +46,9 @@ function describeCameraError(err: unknown): string {
 /**
  * Live-camera-only image capture — deliberately has no file-upload <input>
  * anywhere, so there is no way to submit an existing PNG file through this
- * component. Captures at a fixed 640x480 (the vendor's documented floor)
- * rather than the stream's native resolution, since that reliably stays
- * well under the 1MB cap.
+ * component. Captures at the video stream's native resolution (NIA requires
+ * the face region to be at least 500x500px, which a 640x480 image can never
+ * contain) — the 1MB size cap below is the safety net for oversized shots.
  */
 export function CameraCapture({ onCapture }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -82,37 +97,53 @@ export function CameraCapture({ onCapture }: CameraCaptureProps) {
     }
   }
 
-  function capture() {
+  async function capture() {
     const video = videoRef.current;
     if (!video) return;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = CAPTURE_WIDTH;
-    canvas.height = CAPTURE_HEIGHT;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, CAPTURE_WIDTH, CAPTURE_HEIGHT);
+    let width = video.videoWidth || FALLBACK_CAPTURE_WIDTH;
+    let height = video.videoHeight || FALLBACK_CAPTURE_HEIGHT;
+    let blob: Blob | null = null;
 
-    canvas.toBlob((blob) => {
+    for (let attempt = 0; attempt < MAX_CAPTURE_ATTEMPTS; attempt++) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, width, height);
+
+      blob = await encodeCanvasToPng(canvas);
       if (!blob) {
         setError("Capture failed — try again.");
         return;
       }
-      if (blob.size > MAX_IMAGE_BYTES) {
-        setError(
-          `Captured image is ${(blob.size / 1024).toFixed(0)}KB, which is over the 1MB limit. Try retaking in better/flatter lighting.`,
-        );
-        return;
-      }
+      if (blob.size <= MAX_IMAGE_BYTES) break;
+      if (Math.min(width, height) <= MIN_CAPTURE_DIMENSION) break;
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setCaptured({ dataUrl, sizeBytes: blob.size });
-        setError(null);
-      };
-      reader.readAsDataURL(blob);
-    }, "image/png");
+      width = Math.round(width * DOWNSCALE_FACTOR);
+      height = Math.round(height * DOWNSCALE_FACTOR);
+    }
+
+    if (!blob) {
+      setError("Capture failed — try again.");
+      return;
+    }
+    if (blob.size > MAX_IMAGE_BYTES) {
+      setError(
+        `Captured image is ${(blob.size / 1024).toFixed(0)}KB, which is over the 1MB limit even at reduced resolution. Try retaking in flatter, more even lighting.`,
+      );
+      return;
+    }
+
+    const finalBlob = blob;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setCaptured({ dataUrl, sizeBytes: finalBlob.size });
+      setError(null);
+    };
+    reader.readAsDataURL(finalBlob);
   }
 
   function retake() {
