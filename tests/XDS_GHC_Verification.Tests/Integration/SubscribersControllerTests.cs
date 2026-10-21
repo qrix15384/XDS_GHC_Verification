@@ -41,8 +41,8 @@ public class SubscribersControllerTests(CustomWebApplicationFactory factory) : I
     {
         var admin = await AdminClientAsync();
         var username = $"standard-sub-{Guid.NewGuid():N}";
-        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "standard-pass-123", role = "Standard" });
-        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "standard-pass-123");
+        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Standard-pass-123", role = "Standard" });
+        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "Standard-pass-123");
         var client = factory.CreateClient();
         client.UseBearer(login.Token);
 
@@ -82,7 +82,7 @@ public class SubscribersControllerTests(CustomWebApplicationFactory factory) : I
         var response = await admin.PostAsJsonAsync("/api/v1/users", new
         {
             username = $"bad-subscriber-{Guid.NewGuid():N}",
-            password = "password-123",
+            password = "Password-123",
             role = "Standard",
             subscriberId = 999_999,
         });
@@ -99,7 +99,7 @@ public class SubscribersControllerTests(CustomWebApplicationFactory factory) : I
         var response = await admin.PostAsJsonAsync("/api/v1/users", new
         {
             username = $"with-subscriber-{Guid.NewGuid():N}",
-            password = "password-123",
+            password = "Password-123",
             role = "Standard",
             subscriberId = seeded.Id,
         });

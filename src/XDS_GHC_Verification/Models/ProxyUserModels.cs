@@ -46,7 +46,7 @@ public class CreateProxyUserRequest
     public string Username { get; set; } = "";
 
     [Required]
-    [MinLength(8)]
+    [StrongPassword]
     public string Password { get; set; } = "";
 
     [Required]
@@ -68,6 +68,37 @@ public class UpdateProxyUserRequest
 public class ResetPasswordRequest
 {
     [Required]
-    [MinLength(8)]
+    [StrongPassword]
     public string NewPassword { get; set; } = "";
+}
+
+/// <summary>
+/// Baseline password strength beyond raw length: a minimum length plus at
+/// least one uppercase letter, one lowercase letter, one digit, and one
+/// symbol, so an 8-character password like "password" can't pass validation
+/// just because it clears a length check.
+/// </summary>
+public class StrongPasswordAttribute : ValidationAttribute
+{
+    public int MinimumLength { get; init; } = 12;
+
+    protected override ValidationResult? IsValid(object? value, ValidationContext validationContext)
+    {
+        var password = value as string ?? "";
+
+        if (password.Length < MinimumLength)
+        {
+            return new ValidationResult($"Password must be at least {MinimumLength} characters long.");
+        }
+
+        var hasUpper = password.Any(char.IsUpper);
+        var hasLower = password.Any(char.IsLower);
+        var hasDigit = password.Any(char.IsDigit);
+        var hasSymbol = password.Any(c => !char.IsLetterOrDigit(c));
+
+        return hasUpper && hasLower && hasDigit && hasSymbol
+            ? ValidationResult.Success
+            : new ValidationResult(
+                "Password must include at least one uppercase letter, one lowercase letter, one digit, and one symbol.");
+    }
 }

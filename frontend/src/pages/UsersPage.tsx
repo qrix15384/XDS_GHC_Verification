@@ -117,12 +117,12 @@ export function UsersPage() {
           required
         />
         <input
-          placeholder="Password"
+          placeholder="Password (12+ chars, upper/lower/digit/symbol)"
           type="password"
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
           required
-          minLength={8}
+          minLength={12}
         />
         <select value={newRole} onChange={(e) => setNewRole(e.target.value as "Admin" | "Standard")}>
           <option value="Standard">Standard</option>

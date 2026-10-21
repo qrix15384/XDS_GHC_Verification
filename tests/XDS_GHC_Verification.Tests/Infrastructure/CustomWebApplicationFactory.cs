@@ -70,6 +70,12 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 ["CreditApi:BaseUrl"] = "https://credit-api.test/",
                 ["CreditApi:Username"] = "test-credit-user",
                 ["CreditApi:Password"] = "test-credit-password",
+                // The whole suite's logins come from the same in-memory TestServer
+                // "client", so they'd all share one rate-limit partition under the
+                // production default (5/min) — loosen it here rather than disable
+                // the feature path entirely.
+                ["LoginRateLimit:PermitLimit"] = "100000",
+                ["LoginRateLimit:WindowSeconds"] = "1",
             });
         });
 

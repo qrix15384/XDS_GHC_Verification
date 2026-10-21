@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using XDS_GHC_Verification.Models;
 using XDS_GHC_Verification.Options;
@@ -21,9 +22,11 @@ public class AuthController(
     IPasswordHasher<ProxyUser> passwordHasher,
     JwtTokenService jwtTokenService,
     IOptions<ServiceAuthOptions> authOptions,
-    IAuditLogService auditLog) : ControllerBase
+    IAuditLogService auditLog,
+    ILogger<AuthController> logger) : ControllerBase
 {
     [HttpPost("login")]
+    [EnableRateLimiting("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest payload, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -33,6 +36,17 @@ public class AuthController(
             && passwordHasher.VerifyHashedPassword(user, user.PasswordHash, payload.Password) != PasswordVerificationResult.Failed;
 
         var statusCode = isValid ? StatusCodes.Status200OK : StatusCodes.Status401Unauthorized;
+
+        var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (isValid)
+        {
+            logger.LogInformation("Successful login for {Username} from {RemoteIp}", payload.Username, remoteIp);
+        }
+        else
+        {
+            logger.LogWarning("Failed login attempt for {Username} from {RemoteIp} ({UserAgent})",
+                payload.Username, remoteIp, Request.Headers.UserAgent.ToString());
+        }
 
         await auditLog.LogTransactionAsync(new AuditLogEntry
         {

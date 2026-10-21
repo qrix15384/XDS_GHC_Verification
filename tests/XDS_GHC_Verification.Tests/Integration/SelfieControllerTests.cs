@@ -20,9 +20,9 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
         var adminLogin = await TestAuthHelper.LoginAsync(admin, CustomWebApplicationFactory.AuthUsername, CustomWebApplicationFactory.AuthPassword);
         admin.UseBearer(adminLogin.Token);
         var username = $"attributed-tester-{Guid.NewGuid():N}";
-        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "tester-pass-123", role = "Standard" });
+        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Tester-pass-123", role = "Standard" });
 
-        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "tester-pass-123");
+        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "Tester-pass-123");
         var client = factory.CreateClient();
         client.UseBearer(login.Token);
         client.DefaultRequestHeaders.Add("X-API-Key", CustomWebApplicationFactory.ApiKey);
@@ -45,9 +45,9 @@ public class SelfieControllerTests(CustomWebApplicationFactory factory) : IClass
         var subscriberId = factory.Subscribers.Seed(subscriberName).Id;
 
         var username = $"subscriber-user-{Guid.NewGuid():N}";
-        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "tester-pass-123", role = "Standard", subscriberId });
+        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Tester-pass-123", role = "Standard", subscriberId });
 
-        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "tester-pass-123");
+        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "Tester-pass-123");
         var client = factory.CreateClient();
         client.UseBearer(login.Token);
         client.DefaultRequestHeaders.Add("X-API-Key", CustomWebApplicationFactory.ApiKey);

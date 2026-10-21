@@ -43,8 +43,8 @@ public class ProxyUsersControllerTests(CustomWebApplicationFactory factory) : IC
     {
         var admin = await AdminClientAsync();
         var username = $"standard-{Guid.NewGuid():N}";
-        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "standard-pass-123", role = "Standard" });
-        var standardLogin = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "standard-pass-123");
+        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Standard-pass-123", role = "Standard" });
+        var standardLogin = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "Standard-pass-123");
         var standardClient = factory.CreateClient();
         standardClient.UseBearer(standardLogin.Token);
 
@@ -58,9 +58,9 @@ public class ProxyUsersControllerTests(CustomWebApplicationFactory factory) : IC
     {
         var admin = await AdminClientAsync();
         var username = $"dup-{Guid.NewGuid():N}";
-        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "password-123", role = "Standard" });
+        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Password-123", role = "Standard" });
 
-        var response = await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "password-456", role = "Standard" });
+        var response = await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Password-456", role = "Standard" });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
@@ -71,7 +71,7 @@ public class ProxyUsersControllerTests(CustomWebApplicationFactory factory) : IC
         var admin = await AdminClientAsync();
 
         var response = await admin.PostAsJsonAsync("/api/v1/users",
-            new { username = $"bad-role-{Guid.NewGuid():N}", password = "password-123", role = "SuperUser" });
+            new { username = $"bad-role-{Guid.NewGuid():N}", password = "Password-123", role = "SuperUser" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -111,7 +111,7 @@ public class ProxyUsersControllerTests(CustomWebApplicationFactory factory) : IC
     {
         var admin = await AdminClientAsync();
         var username = $"second-admin-{Guid.NewGuid():N}";
-        var createResponse = await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "password-123", role = "Admin" });
+        var createResponse = await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Password-123", role = "Admin" });
         var created = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
         var newAdminId = created.RootElement.GetProperty("id").GetInt32();
 
@@ -125,14 +125,14 @@ public class ProxyUsersControllerTests(CustomWebApplicationFactory factory) : IC
     {
         var admin = await AdminClientAsync();
         var username = $"reset-me-{Guid.NewGuid():N}";
-        var createResponse = await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "old-password-123", role = "Standard" });
+        var createResponse = await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Old-password-123", role = "Standard" });
         var created = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
         var userId = created.RootElement.GetProperty("id").GetInt32();
 
-        var resetResponse = await admin.PostAsJsonAsync($"/api/v1/users/{userId}/reset-password", new { newPassword = "new-password-456" });
+        var resetResponse = await admin.PostAsJsonAsync($"/api/v1/users/{userId}/reset-password", new { newPassword = "New-password-456" });
         Assert.Equal(HttpStatusCode.NoContent, resetResponse.StatusCode);
 
-        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "new-password-456");
+        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "New-password-456");
         Assert.Equal("Standard", login.Role);
     }
 }

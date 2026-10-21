@@ -13,6 +13,7 @@ obj/
 # Local secrets — never commit (use `dotnet user-secrets` for local dev)
 appsettings.Production.json
 appsettings.*.local.json
+deploy/vendor-secrets.json
 
 # Logs
 logs/

@@ -1,6 +1,8 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using XDS_GHC_Verification.Auth;
@@ -78,7 +80,61 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
+// ─── Login rate limiting: 5 attempts per minute per client IP, rejected
+// outright (no queueing) — the login endpoint had no brute-force protection
+// at all before this. ───────────────────────────────────────────────────────
+builder.Services.Configure<LoginRateLimitOptions>(builder.Configuration.GetSection(LoginRateLimitOptions.SectionName));
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("login", httpContext =>
+    {
+        var limitOptions = httpContext.RequestServices.GetRequiredService<IOptions<LoginRateLimitOptions>>().Value;
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = limitOptions.PermitLimit,
+                Window = TimeSpan.FromSeconds(limitOptions.WindowSeconds),
+                QueueLimit = 0,
+            });
+    });
+
+    options.OnRejected = (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        return new ValueTask(context.HttpContext.Response.WriteAsync(
+            """{"detail":"Too many login attempts. Please wait a minute and try again."}""", ct));
+    };
+});
+
 var app = builder.Build();
+
+// ─── Startup: fail fast on known-insecure Production config ────────────────
+// Catches the two most likely "forgot to override the default" mistakes
+// before they become a live vulnerability — an admin JWT signed with the
+// shipped placeholder key, or a wide-open CORS policy nobody meant to ship.
+if (app.Environment.IsProduction())
+{
+    const string placeholderSigningKey = "change-me-jwt-signing-key-at-least-32-characters-long";
+    var jwtOptions = app.Services.GetRequiredService<IOptions<JwtOptions>>().Value;
+    if (jwtOptions.SigningKey == placeholderSigningKey || jwtOptions.SigningKey.Length < 32)
+    {
+        throw new InvalidOperationException(
+            "Jwt:SigningKey is missing, too short, or still the placeholder value. Set a strong, unique " +
+            "signing key (32+ random characters) in the production configuration before starting this service.");
+    }
+
+    var corsOptions = app.Services.GetRequiredService<IOptions<CorsOptions>>().Value;
+    if (corsOptions.AllowedOriginsList.Contains("*"))
+    {
+        app.Services.GetRequiredService<ILogger<Program>>().LogWarning(
+            "Cors:AllowedOrigins is \"*\" in Production — any website can make cross-origin requests to " +
+            "this API. Set it to the specific origin(s) that need cross-origin access, or leave it empty if none do.");
+    }
+}
 
 // ─── Startup: best-effort DB connectivity check + ProxyUsers seed ──────────
 using (var scope = app.Services.CreateScope())
@@ -121,6 +177,7 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

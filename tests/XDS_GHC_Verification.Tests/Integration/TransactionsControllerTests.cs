@@ -21,8 +21,8 @@ public class TransactionsControllerTests(CustomWebApplicationFactory factory) : 
     {
         var admin = await AdminClientAsync();
         var username = $"standard-tx-{Guid.NewGuid():N}";
-        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "standard-pass-123", role = "Standard" });
-        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "standard-pass-123");
+        await admin.PostAsJsonAsync("/api/v1/users", new { username, password = "Standard-pass-123", role = "Standard" });
+        var login = await TestAuthHelper.LoginAsync(factory.CreateClient(), username, "Standard-pass-123");
         var client = factory.CreateClient();
         client.UseBearer(login.Token);
         return client;
